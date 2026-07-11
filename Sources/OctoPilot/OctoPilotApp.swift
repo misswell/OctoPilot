@@ -33,11 +33,14 @@ struct QuitRule: Identifiable, Codable, Hashable {
     var inactiveQuitMinutes: Int?
     var hiddenQuitMinutes: Int?
     var isEnabled = true
+
+    var hasAction: Bool { inactiveHideMinutes != nil || inactiveQuitMinutes != nil || hiddenQuitMinutes != nil }
+}
+
+private struct QuitRuntimeState {
     var lastActiveAt: Date?
     var hiddenAt: Date?
     var didHideSinceActive = false
-
-    var hasAction: Bool { inactiveHideMinutes != nil || inactiveQuitMinutes != nil || hiddenQuitMinutes != nil }
 }
 
 struct QuitterImportPreview: Identifiable {
@@ -135,12 +138,11 @@ enum AppText {
         case .english: useChinese = false
         case .system: useChinese = Locale.autoupdatingCurrent.language.languageCode?.identifier == "zh"
         }
-        let template = useChinese ? (chinese[key] ?? key) : english(key)
+        let template = useChinese ? (chinese[key] ?? key) : (english[key] ?? key)
         return arguments.isEmpty ? template : String(format: template, locale: language.locale, arguments: arguments)
     }
 
-    private static func english(_ key: String) -> String {
-        [
+    private static let english: [String: String] = [
             "rules": "Exit", "settings": "Settings", "addApp": "Add app", "apps": "APPS",
             "rulesSubtitle": "Hide or quit apps after they’ve been inactive.", "dropApp": "Drop an app to add its rule",
             "invalidDrop": "Drop a macOS application (.app) to create a rule.", "duplicateRule": "A rule for \"%@\" already exists.",
@@ -178,8 +180,7 @@ enum AppText {
             "loginRequired": "Enable Start at Login to run launch rules automatically after each boot login.", "seconds": "seconds",
             "launchDuplicate": "A launch rule for \"%@\" already exists.", "launchPlanRunning": "%d launches are waiting",
             "launchPlanIdle": "No scheduled launches", "launchPlanDone": "This launch plan is complete"
-        ][key] ?? key
-    }
+        ]
 }
 
 @MainActor
@@ -217,17 +218,18 @@ final class OctoPilotModel: ObservableObject {
 
     @Published private(set) var rules: [QuitRule] = []
     @Published private(set) var launchRules: [LaunchRule] = []
-    @Published var isEnforcing = true { didSet { saveIfReady() } }
+    @Published var isEnforcing = true { didSet { enforcingChanged() } }
     @Published var isLaunchSchedulingEnabled = true { didSet { launchSchedulingChanged() } }
     @Published private(set) var lastChecked = Date()
-    @Published private(set) var currentTime = Date()
     @Published var alertMessage: String?
     @Published private(set) var launchesAtLogin = false
     @Published var language: AppLanguage = .system { didSet { saveIfReady() } }
-    private var timer: Timer?
-    private var displayTimer: Timer?
     private var launchTasks: [UUID: Task<Void, Never>] = [:]
     @Published private(set) var launchStates: [UUID: LaunchRuntimeState] = [:]
+    @Published private(set) var quitDeadlines: [UUID: Date] = [:]
+    private var quitRuntimeStates: [UUID: QuitRuntimeState] = [:]
+    private var quitTasks: [UUID: Task<Void, Never>] = [:]
+    private var workspaceObservers: [NSObjectProtocol] = []
     private var lastScheduledBootSession: String?
     private var isLoading = false
     private let configurationURL: URL
@@ -244,12 +246,7 @@ final class OctoPilotModel: ObservableObject {
         isLoading = false
         save()
         refreshLoginItemState()
-        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.evaluateRules() }
-        }
-        displayTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.currentTime = Date() }
-        }
+        startObservingWorkspace()
         evaluateRules()
         scheduleLaunchPlanForCurrentBootIfNeeded()
     }
@@ -259,23 +256,6 @@ final class OctoPilotModel: ObservableObject {
     var pendingLaunchCount: Int { launchStates.values.reduce(into: 0) { if case .pending = $1 { $0 += 1 } } }
     var configurationFilePath: String { configurationURL.path }
 
-    func remainingQuitMinutes(for rule: QuitRule) -> Int? {
-        guard isEnforcing, rule.isEnabled,
-              let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == rule.bundleIdentifier }),
-              !app.isActive else { return nil }
-
-        let now = Date()
-        var deadlines: [Date] = []
-        if let minutes = rule.inactiveQuitMinutes, let lastActiveAt = rule.lastActiveAt {
-            deadlines.append(lastActiveAt.addingTimeInterval(Double(minutes * 60)))
-        }
-        if app.isHidden, let minutes = rule.hiddenQuitMinutes, let hiddenAt = rule.hiddenAt {
-            deadlines.append(hiddenAt.addingTimeInterval(Double(minutes * 60)))
-        }
-        guard let deadline = deadlines.min() else { return nil }
-        return max(0, Int(ceil(deadline.timeIntervalSince(now) / 60)))
-    }
-
     @discardableResult
     func addRule(_ rule: QuitRule) -> Bool {
         guard !rules.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) else {
@@ -284,6 +264,7 @@ final class OctoPilotModel: ObservableObject {
         }
         rules.append(rule)
         save()
+        rebuildQuitSchedule()
         return true
     }
 
@@ -291,6 +272,7 @@ final class OctoPilotModel: ObservableObject {
         guard let index = rules.firstIndex(where: { $0.id == rule.id }) else { return }
         rules[index] = rule
         save()
+        rebuildQuitSchedule()
     }
 
     @discardableResult
@@ -334,20 +316,11 @@ final class OctoPilotModel: ObservableObject {
         for id in Array(launchTasks.keys) { cancelLaunchTask(for: id, markCancelled: true) }
     }
 
-    func launchStatusText(for rule: LaunchRule) -> String? {
-        guard let state = launchStates[rule.id] else { return nil }
-        switch state {
-        case .pending(let date): return t("launchIn", max(0, Int(ceil(date.timeIntervalSince(currentTime)))) )
-        case .launching: return t("launching")
-        case .launched: return t("launched")
-        case .skippedAlreadyRunning: return t("alreadyRunning")
-        case .cancelled: return t("launchCancelled")
-        case .failed(let message): return t("launchFailed", message)
-        }
-    }
-
     func remove(_ rule: QuitRule) {
+        cancelQuitTask(for: rule.id)
         rules.removeAll { $0.id == rule.id }
+        quitRuntimeStates[rule.id] = nil
+        quitDeadlines[rule.id] = nil
         save()
     }
 
@@ -360,6 +333,7 @@ final class OctoPilotModel: ObservableObject {
         guard let index = rules.firstIndex(where: { $0.id == rule.id }) else { return }
         rules[index].isEnabled.toggle()
         save()
+        rebuildQuitSchedule()
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -454,75 +428,179 @@ final class OctoPilotModel: ObservableObject {
     }
 
     func evaluateRules() {
-        guard isEnforcing else { return }
-        let now = Date()
-        let running = NSWorkspace.shared.runningApplications
-        var changed = false
+        rebuildQuitSchedule()
+    }
 
-        for index in rules.indices where rules[index].isEnabled {
-            guard let app = running.first(where: { $0.bundleIdentifier == rules[index].bundleIdentifier }) else {
-                if rules[index].lastActiveAt != nil || rules[index].hiddenAt != nil {
-                    rules[index].lastActiveAt = nil
-                    rules[index].hiddenAt = nil
-                    rules[index].didHideSinceActive = false
-                    changed = true
+    private func startObservingWorkspace() {
+        let center = NSWorkspace.shared.notificationCenter
+        let names: [Notification.Name] = [
+            NSWorkspace.didLaunchApplicationNotification,
+            NSWorkspace.didTerminateApplicationNotification,
+            NSWorkspace.didActivateApplicationNotification,
+            NSWorkspace.didDeactivateApplicationNotification,
+            NSWorkspace.didHideApplicationNotification,
+            NSWorkspace.didUnhideApplicationNotification,
+            NSWorkspace.didWakeNotification
+        ]
+        workspaceObservers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                let bundleIdentifier = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+                Task { @MainActor in
+                    self?.handleWorkspaceNotification(name: name, bundleIdentifier: bundleIdentifier)
                 }
-                continue
-            }
-
-            if app.isActive {
-                if rules[index].lastActiveAt != now || rules[index].hiddenAt != nil || rules[index].didHideSinceActive {
-                    rules[index].lastActiveAt = now
-                    rules[index].hiddenAt = nil
-                    rules[index].didHideSinceActive = false
-                    changed = true
-                }
-                continue
-            }
-
-            if rules[index].lastActiveAt == nil {
-                rules[index].lastActiveAt = now
-                changed = true
-            }
-
-            if app.isHidden {
-                if rules[index].hiddenAt == nil {
-                    rules[index].hiddenAt = now
-                    changed = true
-                }
-                if let interval = rules[index].hiddenQuitMinutes,
-                   now.timeIntervalSince(rules[index].hiddenAt ?? now) >= Double(interval * 60) {
-                    app.terminate()
-                    rules[index].hiddenAt = now
-                    changed = true
-                }
-                if let interval = rules[index].inactiveQuitMinutes,
-                   now.timeIntervalSince(rules[index].lastActiveAt ?? now) >= Double(interval * 60) {
-                    app.terminate()
-                    rules[index].lastActiveAt = now
-                    changed = true
-                }
-                continue
-            }
-
-            let inactiveSeconds = now.timeIntervalSince(rules[index].lastActiveAt ?? now)
-            if let interval = rules[index].inactiveHideMinutes,
-               !rules[index].didHideSinceActive,
-               inactiveSeconds >= Double(interval * 60) {
-                app.hide()
-                rules[index].didHideSinceActive = true
-                rules[index].hiddenAt = now
-                changed = true
-            }
-            if let interval = rules[index].inactiveQuitMinutes,
-               inactiveSeconds >= Double(interval * 60) {
-                app.terminate()
-                rules[index].lastActiveAt = now
-                changed = true
             }
         }
+    }
+
+    private func handleWorkspaceNotification(name: Notification.Name, bundleIdentifier: String?) {
+        let now = Date()
+        if name == NSWorkspace.didWakeNotification {
+            rebuildQuitSchedule(now: now)
+            return
+        }
+        guard let bundleIdentifier else { return }
+        let matchingRules = rules.filter { $0.bundleIdentifier == bundleIdentifier }
+        guard !matchingRules.isEmpty else { return }
+        for rule in matchingRules {
+            var state = quitRuntimeStates[rule.id] ?? QuitRuntimeState()
+            switch name {
+            case NSWorkspace.didActivateApplicationNotification:
+                state.lastActiveAt = now
+                state.hiddenAt = nil
+                state.didHideSinceActive = false
+            case NSWorkspace.didDeactivateApplicationNotification:
+                state.lastActiveAt = now
+            case NSWorkspace.didHideApplicationNotification:
+                state.hiddenAt = now
+            case NSWorkspace.didUnhideApplicationNotification:
+                state.hiddenAt = nil
+            case NSWorkspace.didLaunchApplicationNotification:
+                state.lastActiveAt = now
+            case NSWorkspace.didTerminateApplicationNotification:
+                state = QuitRuntimeState()
+            default:
+                break
+            }
+            quitRuntimeStates[rule.id] = state
+        }
+        rebuildQuitSchedule(now: now)
+    }
+
+    private func rebuildQuitSchedule(now: Date = Date()) {
+        guard isEnforcing else {
+            cancelAllQuitTasks()
+            return
+        }
+        var runningApps = [String: NSRunningApplication]()
+        for app in NSWorkspace.shared.runningApplications {
+            if let identifier = app.bundleIdentifier { runningApps[identifier] = app }
+        }
+        let validRuleIDs = Set(rules.filter(\.isEnabled).map(\.id))
+        for id in Array(quitTasks.keys) where !validRuleIDs.contains(id) { cancelQuitTask(for: id) }
+        for id in Array(quitDeadlines.keys) where !validRuleIDs.contains(id) { quitDeadlines[id] = nil }
+
+        for rule in rules where rule.isEnabled {
+            evaluateQuitRule(rule, app: runningApps[rule.bundleIdentifier], now: now)
+        }
         lastChecked = now
-        if changed { save() }
+    }
+
+    private func evaluateQuitRule(_ rule: QuitRule, app: NSRunningApplication?, now: Date) {
+        cancelQuitTask(for: rule.id)
+        guard let app else {
+            quitRuntimeStates[rule.id] = nil
+            quitDeadlines[rule.id] = nil
+            return
+        }
+
+        var state = quitRuntimeStates[rule.id] ?? QuitRuntimeState()
+        if app.isActive {
+            state.lastActiveAt = now
+            state.hiddenAt = nil
+            state.didHideSinceActive = false
+            quitRuntimeStates[rule.id] = state
+            quitDeadlines[rule.id] = nil
+            return
+        }
+        if state.lastActiveAt == nil { state.lastActiveAt = now }
+        if app.isHidden {
+            if state.hiddenAt == nil { state.hiddenAt = now }
+        } else {
+            state.hiddenAt = nil
+        }
+
+        let hideDeadline = state.didHideSinceActive ? nil : deadline(minutes: rule.inactiveHideMinutes, since: state.lastActiveAt)
+        let initialQuitDeadline = [
+            deadline(minutes: rule.inactiveQuitMinutes, since: state.lastActiveAt),
+            deadline(minutes: rule.hiddenQuitMinutes, since: state.hiddenAt)
+        ].compactMap { $0 }.min()
+
+        if let initialQuitDeadline, initialQuitDeadline <= now {
+            app.terminate()
+            quitRuntimeStates[rule.id] = nil
+            quitDeadlines[rule.id] = nil
+            return
+        }
+
+        var nextDeadlines = [Date]()
+        if let hideDeadline, hideDeadline <= now {
+            app.hide()
+            state.didHideSinceActive = true
+            state.hiddenAt = now
+        } else if let hideDeadline {
+            nextDeadlines.append(hideDeadline)
+        }
+
+        let inactiveQuitDeadline = deadline(minutes: rule.inactiveQuitMinutes, since: state.lastActiveAt)
+        let hiddenQuitDeadline = deadline(minutes: rule.hiddenQuitMinutes, since: state.hiddenAt)
+        let quitDeadline = [inactiveQuitDeadline, hiddenQuitDeadline].compactMap { $0 }.min()
+        if let inactiveQuitDeadline { nextDeadlines.append(inactiveQuitDeadline) }
+        if let hiddenQuitDeadline { nextDeadlines.append(hiddenQuitDeadline) }
+
+        quitRuntimeStates[rule.id] = state
+        if let quitDeadline { setQuitDeadline(quitDeadline, for: rule.id) }
+        else { quitDeadlines[rule.id] = nil }
+
+        guard let nextDeadline = nextDeadlines.filter({ $0 > now }).min() else { return }
+        let delay = max(0, nextDeadline.timeIntervalSince(now))
+        quitTasks[rule.id] = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.wakeQuitRule(rule.id)
+        }
+    }
+
+    private func wakeQuitRule(_ id: UUID) {
+        quitTasks[id] = nil
+        guard let rule = rules.first(where: { $0.id == id }) else { return }
+        let app = NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == rule.bundleIdentifier }
+        let now = Date()
+        evaluateQuitRule(rule, app: app, now: now)
+        lastChecked = now
+    }
+
+    private func deadline(minutes: Int?, since date: Date?) -> Date? {
+        guard let minutes, let date else { return nil }
+        return date.addingTimeInterval(Double(minutes * 60))
+    }
+
+    private func setQuitDeadline(_ deadline: Date, for id: UUID) {
+        if quitDeadlines[id] != deadline { quitDeadlines[id] = deadline }
+    }
+
+    private func cancelQuitTask(for id: UUID) {
+        quitTasks[id]?.cancel()
+        quitTasks[id] = nil
+    }
+
+    private func cancelAllQuitTasks(resetRuntime: Bool = false) {
+        for id in Array(quitTasks.keys) { cancelQuitTask(for: id) }
+        if !quitDeadlines.isEmpty { quitDeadlines.removeAll() }
+        if resetRuntime { quitRuntimeStates.removeAll() }
     }
 
     private func load() {
@@ -544,26 +622,16 @@ final class OctoPilotModel: ObservableObject {
         language = AppLanguage(rawValue: defaults.string(forKey: languageKey) ?? "") ?? .system
         guard let data = defaults.data(forKey: rulesKey),
               let saved = try? JSONDecoder().decode([QuitRule].self, from: data) else { return }
-        rules = resetRuntimeState(saved)
+        rules = saved
     }
 
     private func apply(_ configuration: StoredConfiguration) {
         isEnforcing = configuration.isEnforcing
         language = configuration.language
-        rules = resetRuntimeState(configuration.rules)
+        rules = configuration.rules
         launchRules = configuration.launchRules
         isLaunchSchedulingEnabled = configuration.isLaunchSchedulingEnabled
         lastScheduledBootSession = configuration.lastScheduledBootSession
-    }
-
-    private func resetRuntimeState(_ saved: [QuitRule]) -> [QuitRule] {
-        saved.map { rule in
-            var reset = rule
-            reset.lastActiveAt = nil
-            reset.hiddenAt = nil
-            reset.didHideSinceActive = false
-            return reset
-        }
     }
 
     private func save() {
@@ -588,6 +656,13 @@ final class OctoPilotModel: ObservableObject {
 
     private func saveIfReady() {
         guard !isLoading else { return }
+        save()
+    }
+
+    private func enforcingChanged() {
+        guard !isLoading else { return }
+        if isEnforcing { rebuildQuitSchedule() }
+        else { cancelAllQuitTasks(resetRuntime: true) }
         save()
     }
 
@@ -889,13 +964,8 @@ struct RuleRow: View {
                 Text(ruleSummary(rule)).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if let remaining = model.remainingQuitMinutes(for: rule) {
-                Text(model.t("quitsIn", remaining))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
-                    .monospacedDigit()
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(.orange.opacity(0.12), in: Capsule())
+            if let deadline = model.quitDeadlines[rule.id] {
+                QuitCountdownBadge(deadline: deadline)
             }
             Button(model.t("edit"), action: edit).buttonStyle(.borderless)
             Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { _ in toggle() })).labelsHidden()
@@ -912,12 +982,43 @@ struct RuleRow: View {
     }
 }
 
+struct QuitCountdownBadge: View {
+    @EnvironmentObject private var model: OctoPilotModel
+    let deadline: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let remaining = max(0, Int(ceil(deadline.timeIntervalSince(context.date) / 60)))
+            Text(model.t("quitsIn", remaining))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .monospacedDigit()
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(.orange.opacity(0.12), in: Capsule())
+        }
+    }
+}
+
+@MainActor
+private final class AppIconCache {
+    static let shared = AppIconCache()
+    private let cache = NSCache<NSString, NSImage>()
+
+    func icon(for path: String) -> NSImage {
+        let key = path as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        let image = NSWorkspace.shared.icon(forFile: path)
+        cache.setObject(image, forKey: key)
+        return image
+    }
+}
+
 struct AppIcon: View {
     var path: String?
     var body: some View {
         Group {
-            if let path, let image = NSWorkspace.shared.icon(forFile: path) as NSImage? {
-                Image(nsImage: image).resizable().interpolation(.high)
+            if let path {
+                Image(nsImage: AppIconCache.shared.icon(for: path)).resizable().interpolation(.high)
             } else { Image(systemName: "app.fill").resizable().scaledToFit().padding(9).foregroundStyle(.blue) }
         }
         .frame(width: 40, height: 40).background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
@@ -1031,10 +1132,7 @@ struct RuleEditor: View {
             inactiveHideMinutes: hideEnabled ? hideMinutes : nil,
             inactiveQuitMinutes: inactiveQuitEnabled ? inactiveQuitMinutes : nil,
             hiddenQuitMinutes: hiddenQuitEnabled ? hiddenQuitMinutes : nil,
-            isEnabled: original?.isEnabled ?? true,
-            lastActiveAt: original?.lastActiveAt,
-            hiddenAt: original?.hiddenAt,
-            didHideSinceActive: original?.didHideSinceActive ?? false
+            isEnabled: original?.isEnabled ?? true
         )
         if original == nil {
             if model.addRule(rule) { dismiss() }
@@ -1139,13 +1237,8 @@ struct LaunchRuleRow: View {
                 Text(model.t("launchAfter", rule.delaySeconds)).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if let status = model.launchStatusText(for: rule) {
-                Text(status)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusColor)
-                    .monospacedDigit()
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(statusColor.opacity(0.12), in: Capsule())
+            if let state = model.launchStates[rule.id] {
+                LaunchStatusBadge(state: state)
             }
             Button(model.t("edit"), action: edit).buttonStyle(.borderless)
             Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { _ in toggle() })).labelsHidden()
@@ -1153,15 +1246,39 @@ struct LaunchRuleRow: View {
         .padding(.vertical, 5)
     }
 
-    private var statusColor: Color {
-        switch model.launchStates[rule.id] {
-        case .pending: .blue
-        case .launching: .orange
-        case .launched: .green
-        case .skippedAlreadyRunning, .cancelled: .secondary
-        case .failed: .red
-        case nil: .secondary
+}
+
+struct LaunchStatusBadge: View {
+    @EnvironmentObject private var model: OctoPilotModel
+    let state: LaunchRuntimeState
+
+    @ViewBuilder
+    var body: some View {
+        switch state {
+        case .pending(let deadline):
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                badge(model.t("launchIn", max(0, Int(ceil(deadline.timeIntervalSince(context.date))))), color: .blue)
+            }
+        case .launching:
+            badge(model.t("launching"), color: .orange)
+        case .launched:
+            badge(model.t("launched"), color: .green)
+        case .skippedAlreadyRunning:
+            badge(model.t("alreadyRunning"), color: .secondary)
+        case .cancelled:
+            badge(model.t("launchCancelled"), color: .secondary)
+        case .failed(let message):
+            badge(model.t("launchFailed", message), color: .red)
         }
+    }
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(color)
+            .monospacedDigit()
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(color.opacity(0.12), in: Capsule())
     }
 }
 
