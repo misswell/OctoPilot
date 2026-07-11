@@ -229,6 +229,7 @@ final class OctoPilotModel: ObservableObject {
     @Published private(set) var quitDeadlines: [UUID: Date] = [:]
     private var quitRuntimeStates: [UUID: QuitRuntimeState] = [:]
     private var quitTasks: [UUID: Task<Void, Never>] = [:]
+    private var safetyCheckTask: Task<Void, Never>?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var lastScheduledBootSession: String?
     private var isLoading = false
@@ -247,6 +248,7 @@ final class OctoPilotModel: ObservableObject {
         save()
         refreshLoginItemState()
         startObservingWorkspace()
+        startSafetyChecks()
         evaluateRules()
         scheduleLaunchPlanForCurrentBootIfNeeded()
     }
@@ -537,8 +539,9 @@ final class OctoPilotModel: ObservableObject {
 
         if let initialQuitDeadline, initialQuitDeadline <= now {
             app.terminate()
-            quitRuntimeStates[rule.id] = nil
+            quitRuntimeStates[rule.id] = state
             quitDeadlines[rule.id] = nil
+            scheduleQuitWake(for: rule.id, at: now.addingTimeInterval(60), now: now)
             return
         }
 
@@ -562,16 +565,40 @@ final class OctoPilotModel: ObservableObject {
         else { quitDeadlines[rule.id] = nil }
 
         guard let nextDeadline = nextDeadlines.filter({ $0 > now }).min() else { return }
-        let delay = max(0, nextDeadline.timeIntervalSince(now))
-        quitTasks[rule.id] = Task { [weak self] in
+        scheduleQuitWake(for: rule.id, at: nextDeadline, now: now)
+    }
+
+    private func scheduleQuitWake(for id: UUID, at deadline: Date, now: Date) {
+        let delay = max(0, deadline.timeIntervalSince(now))
+        quitTasks[id] = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
             } catch {
                 return
             }
             guard !Task.isCancelled else { return }
-            self?.wakeQuitRule(rule.id)
+            self?.wakeQuitRule(id)
         }
+    }
+
+    private func startSafetyChecks() {
+        guard isEnforcing, safetyCheckTask == nil else { return }
+        safetyCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(60))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, let self else { return }
+                self.rebuildQuitSchedule()
+            }
+        }
+    }
+
+    private func stopSafetyChecks() {
+        safetyCheckTask?.cancel()
+        safetyCheckTask = nil
     }
 
     private func wakeQuitRule(_ id: UUID) {
@@ -661,8 +688,13 @@ final class OctoPilotModel: ObservableObject {
 
     private func enforcingChanged() {
         guard !isLoading else { return }
-        if isEnforcing { rebuildQuitSchedule() }
-        else { cancelAllQuitTasks(resetRuntime: true) }
+        if isEnforcing {
+            startSafetyChecks()
+            rebuildQuitSchedule()
+        } else {
+            stopSafetyChecks()
+            cancelAllQuitTasks(resetRuntime: true)
+        }
         save()
     }
 
