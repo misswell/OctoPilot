@@ -1,5 +1,7 @@
 # OctoQuit
 
+[简体中文](README.zh-CN.md)
+
 A native macOS menu-bar app inspired by Quitter. Each app can have independent rules to:
 
 - hide after a period of inactivity;
