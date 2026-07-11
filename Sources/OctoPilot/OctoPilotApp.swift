@@ -9,7 +9,7 @@ struct OctoPilotApp: App {
     @StateObject private var model = OctoPilotModel()
 
     var body: some Scene {
-        WindowGroup("OctoPilot") {
+        Window("OctoPilot", id: "main") {
             ContentView().environmentObject(model)
                 .frame(minWidth: 900, minHeight: 620)
         }
@@ -1410,6 +1410,8 @@ struct ActionSetting: View {
 
 struct MenuBarView: View {
     @EnvironmentObject private var model: OctoPilotModel
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Text(model.isEnforcing ? model.t("enabledStatus") : model.t("disabledStatus"))
         Divider()
@@ -1422,9 +1424,32 @@ struct MenuBarView: View {
             .disabled(model.pendingLaunchCount == 0)
         Divider()
         Toggle(model.t("startAtLogin"), isOn: Binding(get: { model.launchesAtLogin }, set: { model.setLaunchAtLogin($0) }))
-        Button(model.t("showApp")) { NSApp.activate(ignoringOtherApps: true); NSApp.windows.first?.makeKeyAndOrderFront(nil) }
+        Button(model.t("showApp"), action: showMainWindow)
         Divider()
         Button(model.t("quitApp")) { NSApp.terminate(nil) }
+    }
+
+    private func showMainWindow() {
+        if let window = mainWindow {
+            present(window)
+            return
+        }
+
+        openWindow(id: "main")
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            if let window = mainWindow { present(window) }
+        }
+    }
+
+    private var mainWindow: NSWindow? {
+        NSApp.windows.first { $0.title == "OctoPilot" && $0.canBecomeMain }
+    }
+
+    private func present(_ window: NSWindow) {
+        NSApp.activate(ignoringOtherApps: true)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
