@@ -1342,6 +1342,7 @@ struct LaunchRuleEditor: View {
     @State private var bundlePath = ""
     @State private var delaySeconds = 30
     @State private var activateOnLaunch = false
+    @State private var runningApps: [NSRunningApplication] = []
 
     init(rule: LaunchRule?) {
         original = rule
@@ -1377,6 +1378,7 @@ struct LaunchRuleEditor: View {
             }
         }
         .padding(28).frame(width: 520, height: 390)
+        .onAppear(perform: refreshRunningApps)
         .onChange(of: delaySeconds) { _, value in delaySeconds = min(max(value, 0), 86_400) }
     }
 
@@ -1391,11 +1393,48 @@ struct LaunchRuleEditor: View {
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 12)
-                Button(appName.isEmpty ? model.t("chooseApp") : model.t("changeApp"), action: browseForApp)
+                Menu {
+                    if runningApps.isEmpty {
+                        Text(model.t("noRunningApps"))
+                    } else {
+                        Section(model.t("runningApps")) {
+                            ForEach(runningApps, id: \.processIdentifier) { app in
+                                Button(app.localizedName ?? app.bundleIdentifier ?? "Unknown") {
+                                    selectRunningApp(app)
+                                }
+                            }
+                        }
+                    }
+                    Divider()
+                    Button(model.t("browseApplications"), action: browseForApp)
+                } label: {
+                    Label(appName.isEmpty ? model.t("chooseApp") : model.t("changeApp"), systemImage: "chevron.up.chevron.down")
+                }
+                .menuStyle(.borderlessButton)
             }
             .padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary))
         }
+    }
+
+    private func refreshRunningApps() {
+        var seenIdentifiers = Set<String>()
+        runningApps = NSWorkspace.shared.runningApplications
+            .filter { app in
+                guard app.activationPolicy == .regular,
+                      let identifier = app.bundleIdentifier,
+                      identifier != Bundle.main.bundleIdentifier,
+                      app.bundleURL != nil else { return false }
+                return seenIdentifiers.insert(identifier).inserted
+            }
+            .sorted { ($0.localizedName ?? "").localizedCaseInsensitiveCompare($1.localizedName ?? "") == .orderedAscending }
+    }
+
+    private func selectRunningApp(_ app: NSRunningApplication) {
+        guard let identifier = app.bundleIdentifier, let url = app.bundleURL else { return }
+        appName = app.localizedName ?? identifier
+        bundleIdentifier = identifier
+        bundlePath = url.path
     }
 
     private func browseForApp() {
