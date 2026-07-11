@@ -8,7 +8,9 @@ A native macOS menu-bar app that helps you manage distracting apps automatically
 - quit after a period of inactivity;
 - quit after it has been hidden for a period of time.
 
-Rules and preferences persist in `~/Library/Application Support/OctoQuit/config.json`. This file is independent from the app bundle, so updating or replacing `OctoQuit.app` preserves your configuration. You can also see and reveal the exact path in Settings.
+It can also launch selected apps after a per-app delay following login. Launch rules use seconds, show a live countdown, skip apps that are already running, and run automatically only when OctoQuit is configured to start at login.
+
+Rules, launch plans, and preferences persist in `~/Library/Application Support/OctoQuit/config.json`. This file is independent from the app bundle, so updating or replacing `OctoQuit.app` preserves your configuration. You can also see and reveal the exact path in Settings.
 
 You can pick a running app or browse for an `.app` bundle, reorder rules, pause enforcement globally, and choose Start at Login from the menu-bar menu.
 

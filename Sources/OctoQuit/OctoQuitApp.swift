@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
@@ -46,6 +47,25 @@ struct QuitterImportPreview: Identifiable {
     let isEnforcing: Bool?
 }
 
+struct LaunchRule: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var appName: String
+    var bundleIdentifier: String
+    var bundlePath: String
+    var delaySeconds: Int = 30
+    var isEnabled = true
+    var activateOnLaunch = false
+}
+
+enum LaunchRuntimeState: Equatable {
+    case pending(Date)
+    case launching
+    case launched
+    case skippedAlreadyRunning
+    case cancelled
+    case failed(String)
+}
+
 enum AppLanguage: String, CaseIterable, Codable, Identifiable {
     case system
     case english
@@ -63,7 +83,7 @@ enum AppLanguage: String, CaseIterable, Codable, Identifiable {
 
 enum AppText {
     private static let chinese: [String: String] = [
-        "rules": "规则", "settings": "设置", "addApp": "添加应用", "apps": "应用",
+        "rules": "退出", "settings": "设置", "addApp": "添加应用", "apps": "应用",
         "rulesSubtitle": "在应用闲置一段时间后自动隐藏或退出。",
         "dropApp": "拖入应用以添加规则", "invalidDrop": "请拖入 macOS 应用（.app）以创建规则。",
         "duplicateRule": "已存在 \"%@\" 的规则。", "enforcing": "规则执行中", "paused": "规则已暂停",
@@ -91,6 +111,17 @@ enum AppText {
         "disabledStatus": "OctoQuit：已停用", "disableApp": "停用 OctoQuit", "enableApp": "启用 OctoQuit",
         "loginError": "无法更新登录启动项：%@", "aboutAutomation": "自动化", "manageRules": "管理应用规则和界面偏好。",
         "quitsIn": "将在 %d 分钟后退出"
+        , "launch": "启动", "launchSubtitle": "在登录后按设定延迟启动应用。", "launchApps": "启动应用",
+        "addLaunchApp": "添加启动应用", "addLaunchRule": "添加启动规则", "editLaunchRule": "编辑启动规则",
+        "launchRuleDetail": "选择一个应用，并设置从 OctoQuit 登录启动开始计算的延迟秒数。",
+        "launchAfter": "登录后 %d 秒启动", "delaySeconds": "延迟秒数", "activateOnLaunch": "启动后显示到前台",
+        "runNow": "立即执行", "cancelLaunches": "取消待启动任务", "launchEnabled": "启动计划已启用", "launchPaused": "启动计划已暂停",
+        "launchIn": "%d 秒后启动", "launching": "正在启动", "launched": "已启动", "alreadyRunning": "已跳过：应用已在运行",
+        "launchCancelled": "已取消", "launchFailed": "启动失败：%@", "noLaunchApps": "尚未添加启动应用",
+        "noLaunchAppsDetail": "添加应用并设置登录后的启动延迟。", "addFirstLaunchApp": "添加第一个启动应用",
+        "loginRequired": "启用“登录时启动”后，启动规则会在每次开机登录时自动执行。", "seconds": "秒",
+        "launchDuplicate": "已存在 \"%@\" 的启动规则。", "launchPlanRunning": "%d 个任务正在等待启动",
+        "launchPlanIdle": "没有待启动任务", "launchPlanDone": "本次启动计划已完成"
     ]
 
     static func value(_ key: String, language: AppLanguage, _ arguments: CVarArg...) -> String {
@@ -110,7 +141,7 @@ enum AppText {
 
     private static func english(_ key: String) -> String {
         [
-            "rules": "Rules", "settings": "Settings", "addApp": "Add app", "apps": "APPS",
+            "rules": "Exit", "settings": "Settings", "addApp": "Add app", "apps": "APPS",
             "rulesSubtitle": "Hide or quit apps after they’ve been inactive.", "dropApp": "Drop an app to add its rule",
             "invalidDrop": "Drop a macOS application (.app) to create a rule.", "duplicateRule": "A rule for \"%@\" already exists.",
             "enforcing": "Enforcing rules", "paused": "Rules paused", "enabledChecked": "%d enabled • checked %@",
@@ -135,7 +166,18 @@ enum AppText {
             "startAtLogin": "Start at Login", "showApp": "Show OctoQuit", "quitApp": "Quit OctoQuit", "enabledStatus": "OctoQuit: Enabled",
             "disabledStatus": "OctoQuit: Disabled", "disableApp": "Disable OctoQuit", "enableApp": "Enable OctoQuit",
             "loginError": "Couldn’t update the login item: %@", "aboutAutomation": "AUTOMATION", "manageRules": "Manage app rules and interface preferences.",
-            "quitsIn": "Quits in %d min"
+            "quitsIn": "Quits in %d min",
+            "launch": "Launch", "launchSubtitle": "Launch apps after their configured delay following login.", "launchApps": "LAUNCH APPS",
+            "addLaunchApp": "Add launch app", "addLaunchRule": "Add launch rule", "editLaunchRule": "Edit launch rule",
+            "launchRuleDetail": "Choose an app and set its delay in seconds from when OctoQuit starts at login.",
+            "launchAfter": "Launch %d sec after login", "delaySeconds": "Delay in seconds", "activateOnLaunch": "Bring to front after launching",
+            "runNow": "Run now", "cancelLaunches": "Cancel scheduled launches", "launchEnabled": "Launch plan enabled", "launchPaused": "Launch plan paused",
+            "launchIn": "Launches in %d sec", "launching": "Launching", "launched": "Launched", "alreadyRunning": "Skipped: already running",
+            "launchCancelled": "Cancelled", "launchFailed": "Launch failed: %@", "noLaunchApps": "No launch apps yet",
+            "noLaunchAppsDetail": "Add an app and set its delay after login.", "addFirstLaunchApp": "Add your first launch app",
+            "loginRequired": "Enable Start at Login to run launch rules automatically after each boot login.", "seconds": "seconds",
+            "launchDuplicate": "A launch rule for \"%@\" already exists.", "launchPlanRunning": "%d launches are waiting",
+            "launchPlanIdle": "No scheduled launches", "launchPlanDone": "This launch plan is complete"
         ][key] ?? key
     }
 }
@@ -143,19 +185,50 @@ enum AppText {
 @MainActor
 final class QuitterModel: ObservableObject {
     private struct StoredConfiguration: Codable {
-        var version: Int = 1
+        var version: Int
         var rules: [QuitRule]
         var isEnforcing: Bool
         var language: AppLanguage
+        var launchRules: [LaunchRule]
+        var isLaunchSchedulingEnabled: Bool
+        var lastScheduledBootSession: String?
+
+        init(rules: [QuitRule], isEnforcing: Bool, language: AppLanguage, launchRules: [LaunchRule], isLaunchSchedulingEnabled: Bool, lastScheduledBootSession: String?) {
+            version = 2
+            self.rules = rules
+            self.isEnforcing = isEnforcing
+            self.language = language
+            self.launchRules = launchRules
+            self.isLaunchSchedulingEnabled = isLaunchSchedulingEnabled
+            self.lastScheduledBootSession = lastScheduledBootSession
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+            rules = try container.decodeIfPresent([QuitRule].self, forKey: .rules) ?? []
+            isEnforcing = try container.decodeIfPresent(Bool.self, forKey: .isEnforcing) ?? true
+            language = try container.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
+            launchRules = try container.decodeIfPresent([LaunchRule].self, forKey: .launchRules) ?? []
+            isLaunchSchedulingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLaunchSchedulingEnabled) ?? true
+            lastScheduledBootSession = try container.decodeIfPresent(String.self, forKey: .lastScheduledBootSession)
+        }
     }
 
     @Published private(set) var rules: [QuitRule] = []
+    @Published private(set) var launchRules: [LaunchRule] = []
     @Published var isEnforcing = true { didSet { saveIfReady() } }
+    @Published var isLaunchSchedulingEnabled = true { didSet { launchSchedulingChanged() } }
     @Published private(set) var lastChecked = Date()
+    @Published private(set) var currentTime = Date()
     @Published var alertMessage: String?
     @Published private(set) var launchesAtLogin = false
     @Published var language: AppLanguage = .system { didSet { saveIfReady() } }
     private var timer: Timer?
+    private var displayTimer: Timer?
+    private var launchTasks: [UUID: Task<Void, Never>] = [:]
+    @Published private(set) var launchStates: [UUID: LaunchRuntimeState] = [:]
+    private var lastScheduledBootSession: String?
     private var isLoading = false
     private let configurationURL: URL
     private let rulesKey = "OctoQuit.rules.v2"
@@ -172,10 +245,16 @@ final class QuitterModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.evaluateRules() }
         }
+        displayTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.currentTime = Date() }
+        }
         evaluateRules()
+        scheduleLaunchPlanForCurrentBootIfNeeded()
     }
 
     var enabledCount: Int { rules.filter(\.isEnabled).count }
+    var enabledLaunchCount: Int { launchRules.filter(\.isEnabled).count }
+    var pendingLaunchCount: Int { launchStates.values.reduce(into: 0) { if case .pending = $1 { $0 += 1 } } }
     var configurationFilePath: String { configurationURL.path }
 
     func remainingQuitMinutes(for rule: QuitRule) -> Int? {
@@ -210,6 +289,59 @@ final class QuitterModel: ObservableObject {
         guard let index = rules.firstIndex(where: { $0.id == rule.id }) else { return }
         rules[index] = rule
         save()
+    }
+
+    @discardableResult
+    func addLaunchRule(_ rule: LaunchRule) -> Bool {
+        guard !launchRules.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) else {
+            alertMessage = t("launchDuplicate", rule.appName)
+            return false
+        }
+        launchRules.append(rule)
+        save()
+        return true
+    }
+
+    func updateLaunchRule(_ rule: LaunchRule) {
+        guard let index = launchRules.firstIndex(where: { $0.id == rule.id }) else { return }
+        cancelLaunchTask(for: rule.id, markCancelled: false)
+        launchRules[index] = rule
+        save()
+    }
+
+    func removeLaunchRule(_ rule: LaunchRule) {
+        cancelLaunchTask(for: rule.id, markCancelled: false)
+        launchRules.removeAll { $0.id == rule.id }
+        launchStates[rule.id] = nil
+        save()
+    }
+
+    func toggleLaunchRule(_ rule: LaunchRule) {
+        guard let index = launchRules.firstIndex(where: { $0.id == rule.id }) else { return }
+        launchRules[index].isEnabled.toggle()
+        if !launchRules[index].isEnabled { cancelLaunchTask(for: rule.id, markCancelled: true) }
+        save()
+    }
+
+    func runLaunchPlanNow() {
+        guard isLaunchSchedulingEnabled else { return }
+        scheduleLaunchPlan()
+    }
+
+    func cancelScheduledLaunches() {
+        for id in Array(launchTasks.keys) { cancelLaunchTask(for: id, markCancelled: true) }
+    }
+
+    func launchStatusText(for rule: LaunchRule) -> String? {
+        guard let state = launchStates[rule.id] else { return nil }
+        switch state {
+        case .pending(let date): return t("launchIn", max(0, Int(ceil(date.timeIntervalSince(currentTime)))) )
+        case .launching: return t("launching")
+        case .launched: return t("launched")
+        case .skippedAlreadyRunning: return t("alreadyRunning")
+        case .cancelled: return t("launchCancelled")
+        case .failed(let message): return t("launchFailed", message)
+        }
     }
 
     func remove(_ rule: QuitRule) {
@@ -411,6 +543,9 @@ final class QuitterModel: ObservableObject {
         isEnforcing = configuration.isEnforcing
         language = configuration.language
         rules = resetRuntimeState(configuration.rules)
+        launchRules = configuration.launchRules
+        isLaunchSchedulingEnabled = configuration.isLaunchSchedulingEnabled
+        lastScheduledBootSession = configuration.lastScheduledBootSession
     }
 
     private func resetRuntimeState(_ saved: [QuitRule]) -> [QuitRule] {
@@ -424,7 +559,14 @@ final class QuitterModel: ObservableObject {
     }
 
     private func save() {
-        let configuration = StoredConfiguration(rules: rules, isEnforcing: isEnforcing, language: language)
+        let configuration = StoredConfiguration(
+            rules: rules,
+            isEnforcing: isEnforcing,
+            language: language,
+            launchRules: launchRules,
+            isLaunchSchedulingEnabled: isLaunchSchedulingEnabled,
+            lastScheduledBootSession: lastScheduledBootSession
+        )
         do {
             let directory = configurationURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -441,9 +583,88 @@ final class QuitterModel: ObservableObject {
         save()
     }
 
+    private func launchSchedulingChanged() {
+        guard !isLoading else { return }
+        if !isLaunchSchedulingEnabled { cancelScheduledLaunches() }
+        save()
+    }
+
+    private func scheduleLaunchPlanForCurrentBootIfNeeded() {
+        guard isLaunchSchedulingEnabled, launchesAtLogin else { return }
+        let bootSession = Self.bootSessionIdentifier()
+        guard lastScheduledBootSession != bootSession else { return }
+        lastScheduledBootSession = bootSession
+        save()
+        scheduleLaunchPlan()
+    }
+
+    private func scheduleLaunchPlan() {
+        cancelScheduledLaunches()
+        let now = Date()
+        for rule in launchRules where rule.isEnabled {
+            if NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) {
+                launchStates[rule.id] = .skippedAlreadyRunning
+                continue
+            }
+            let dueDate = now.addingTimeInterval(Double(rule.delaySeconds))
+            launchStates[rule.id] = .pending(dueDate)
+            launchTasks[rule.id] = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .seconds(rule.delaySeconds))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                await self?.launch(ruleID: rule.id)
+            }
+        }
+    }
+
+    private func launch(ruleID: UUID) async {
+        launchTasks[ruleID] = nil
+        guard isLaunchSchedulingEnabled,
+              let rule = launchRules.first(where: { $0.id == ruleID }), rule.isEnabled else {
+            launchStates[ruleID] = .cancelled
+            return
+        }
+        if NSWorkspace.shared.runningApplications.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) {
+            launchStates[ruleID] = .skippedAlreadyRunning
+            return
+        }
+        let url = URL(fileURLWithPath: rule.bundlePath)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            launchStates[ruleID] = .failed("App not found")
+            return
+        }
+        launchStates[ruleID] = .launching
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = rule.activateOnLaunch
+        do {
+            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            launchStates[ruleID] = .launched
+        } catch {
+            launchStates[ruleID] = .failed(error.localizedDescription)
+        }
+    }
+
+    private func cancelLaunchTask(for id: UUID, markCancelled: Bool) {
+        launchTasks[id]?.cancel()
+        launchTasks[id] = nil
+        if markCancelled { launchStates[id] = .cancelled }
+    }
+
     private static func defaultConfigurationURL() -> URL {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return applicationSupport.appendingPathComponent("OctoQuit", isDirectory: true).appendingPathComponent("config.json")
+    }
+
+    private static func bootSessionIdentifier() -> String {
+        var bootTime = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &bootTime, &size, nil, 0) == 0 else {
+            return "uptime-\(Int(ProcessInfo.processInfo.systemUptime))"
+        }
+        return "boot-\(bootTime.tv_sec)"
     }
 
     private static func defaultQuitterConfigurationURL() -> URL {
@@ -472,24 +693,28 @@ final class QuitterModel: ObservableObject {
     var timeString: String { lastChecked.formatted(.dateTime.hour().minute().locale(language.locale)) }
 }
 
-enum MainSection { case rules, settings }
+enum MainSection { case exit, launch, settings }
 
 struct ContentView: View {
     @EnvironmentObject private var model: QuitterModel
     @State private var showingAdd = false
     @State private var editingRule: QuitRule?
+    @State private var showingLaunchAdd = false
+    @State private var editingLaunchRule: LaunchRule?
     @State private var isDropTarget = false
-    @State private var section: MainSection = .rules
+    @State private var section: MainSection = .exit
 
     var body: some View {
         HStack(spacing: 0) {
             Sidebar(section: $section)
             Divider()
             VStack(alignment: .leading, spacing: 0) {
-                if section == .rules {
+                if section == .exit {
                     header
                     if model.rules.isEmpty { EmptyRulesView(addRule: { showingAdd = true }) }
                     else { rulesList }
+                } else if section == .launch {
+                    LaunchRulesView(showingAdd: $showingLaunchAdd, editingRule: $editingLaunchRule)
                 } else {
                     SettingsView()
                 }
@@ -499,6 +724,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingAdd) { RuleEditor(rule: nil).environmentObject(model) }
         .sheet(item: $editingRule) { rule in RuleEditor(rule: rule).environmentObject(model) }
+        .sheet(isPresented: $showingLaunchAdd) { LaunchRuleEditor(rule: nil).environmentObject(model) }
+        .sheet(item: $editingLaunchRule) { rule in LaunchRuleEditor(rule: rule).environmentObject(model) }
         .alert("OctoQuit", isPresented: Binding(get: { model.alertMessage != nil }, set: { if !$0 { model.alertMessage = nil } })) {
             Button("OK", role: .cancel) { model.alertMessage = nil }
         } message: { Text(model.alertMessage ?? "") }
@@ -581,13 +808,21 @@ struct Sidebar: View {
                 Text("OctoQuit").font(.headline)
             }
             .padding(.horizontal, 22).padding(.top, 30).padding(.bottom, 34)
-            Button { section = .rules } label: {
+            Button { section = .exit } label: {
                 Label(model.t("rules"), systemImage: "list.bullet.rectangle")
                     .padding(.vertical, 9).padding(.horizontal, 14)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
-            .background(section == .rules ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .background(section == .exit ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 12)
+            Button { section = .launch } label: {
+                Label(model.t("launch"), systemImage: "play.circle")
+                    .padding(.vertical, 9).padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .background(section == .launch ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 12)
             Button { section = .settings } label: {
                 Label(model.t("settings"), systemImage: "gearshape")
@@ -797,6 +1032,225 @@ struct RuleEditor: View {
     }
 }
 
+struct LaunchRulesView: View {
+    @EnvironmentObject private var model: QuitterModel
+    @Binding var showingAdd: Bool
+    @Binding var editingRule: LaunchRule?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(model.t("launch")).font(.system(size: 30, weight: .bold))
+                    Text(model.t("launchSubtitle")).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { showingAdd = true } label: { Label(model.t("addLaunchApp"), systemImage: "plus") }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+            }
+            .padding(.horizontal, 36).padding(.top, 34).padding(.bottom, 22)
+
+            launchControls
+
+            if model.launchRules.isEmpty {
+                EmptyLaunchRulesView(addRule: { showingAdd = true })
+            } else {
+                List {
+                    Section(model.t("launchApps")) {
+                        ForEach(model.launchRules) { rule in
+                            LaunchRuleRow(rule: rule, edit: { editingRule = rule }, toggle: { model.toggleLaunchRule(rule) })
+                                .contextMenu {
+                                    Button(model.t("edit")) { editingRule = rule }
+                                    Divider()
+                                    Button(model.t("deleteRule"), role: .destructive) { model.removeLaunchRule(rule) }
+                                }
+                        }
+                    }
+                }
+                .listStyle(.inset(alternatesRowBackgrounds: false))
+                .padding(.horizontal, 22).padding(.bottom, 20)
+            }
+        }
+    }
+
+    private var launchControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Toggle(model.t("launchEnabled"), isOn: $model.isLaunchSchedulingEnabled).toggleStyle(.switch)
+                Spacer()
+                Button(model.t("cancelLaunches")) { model.cancelScheduledLaunches() }
+                    .disabled(model.pendingLaunchCount == 0)
+                Button(model.t("runNow")) { model.runLaunchPlanNow() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.isLaunchSchedulingEnabled || model.enabledLaunchCount == 0)
+            }
+            Text(model.launchesAtLogin ? launchPlanMessage : model.t("loginRequired"))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 36).padding(.bottom, 16)
+    }
+
+    private var launchPlanMessage: String {
+        if model.pendingLaunchCount > 0 { return model.t("launchPlanRunning", model.pendingLaunchCount) }
+        if model.launchRules.isEmpty { return model.t("launchPlanIdle") }
+        return model.t("launchPlanDone")
+    }
+}
+
+struct EmptyLaunchRulesView: View {
+    @EnvironmentObject private var model: QuitterModel
+    let addRule: () -> Void
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "play.circle").font(.system(size: 46)).foregroundStyle(.blue)
+            Text(model.t("noLaunchApps")).font(.title2.bold())
+            Text(model.t("noLaunchAppsDetail")).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Button(model.t("addFirstLaunchApp"), action: addRule).buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.bottom, 70)
+    }
+}
+
+struct LaunchRuleRow: View {
+    @EnvironmentObject private var model: QuitterModel
+    let rule: LaunchRule
+    let edit: () -> Void
+    let toggle: () -> Void
+    var body: some View {
+        HStack(spacing: 14) {
+            AppIcon(path: rule.bundlePath)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(rule.appName).font(.body.weight(.semibold))
+                Text(model.t("launchAfter", rule.delaySeconds)).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let status = model.launchStatusText(for: rule) {
+                Text(status)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusColor)
+                    .monospacedDigit()
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(statusColor.opacity(0.12), in: Capsule())
+            }
+            Button(model.t("edit"), action: edit).buttonStyle(.borderless)
+            Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { _ in toggle() })).labelsHidden()
+        }
+        .padding(.vertical, 5)
+    }
+
+    private var statusColor: Color {
+        switch model.launchStates[rule.id] {
+        case .pending: .blue
+        case .launching: .orange
+        case .launched: .green
+        case .skippedAlreadyRunning, .cancelled: .secondary
+        case .failed: .red
+        case nil: .secondary
+        }
+    }
+}
+
+struct LaunchRuleEditor: View {
+    @EnvironmentObject private var model: QuitterModel
+    @Environment(\.dismiss) private var dismiss
+    private let original: LaunchRule?
+    @State private var appName = ""
+    @State private var bundleIdentifier = ""
+    @State private var bundlePath = ""
+    @State private var delaySeconds = 30
+    @State private var activateOnLaunch = false
+
+    init(rule: LaunchRule?) {
+        original = rule
+        _appName = State(initialValue: rule?.appName ?? "")
+        _bundleIdentifier = State(initialValue: rule?.bundleIdentifier ?? "")
+        _bundlePath = State(initialValue: rule?.bundlePath ?? "")
+        _delaySeconds = State(initialValue: rule?.delaySeconds ?? 30)
+        _activateOnLaunch = State(initialValue: rule?.activateOnLaunch ?? false)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(original == nil ? model.t("addLaunchRule") : model.t("editLaunchRule")).font(.title2.bold())
+            Text(model.t("launchRuleDetail")).foregroundStyle(.secondary)
+            appPicker
+            Divider()
+            HStack {
+                Text(model.t("delaySeconds"))
+                Spacer()
+                TextField(model.t("seconds"), value: $delaySeconds, format: .number)
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 68)
+                Stepper("", value: $delaySeconds, in: 0...86_400).labelsHidden()
+                Text(model.t("seconds")).font(.caption).foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
+            }
+            Toggle(model.t("activateOnLaunch"), isOn: $activateOnLaunch).toggleStyle(.checkbox)
+            Spacer()
+            HStack {
+                Spacer()
+                Button(model.t("cancel")) { dismiss() }
+                Button(original == nil ? model.t("addLaunchApp") : model.t("save")) { save() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(bundleIdentifier.isEmpty || bundlePath.isEmpty)
+            }
+        }
+        .padding(28).frame(width: 520, height: 390)
+        .onChange(of: delaySeconds) { _, value in delaySeconds = min(max(value, 0), 86_400) }
+    }
+
+    private var appPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(model.t("application")).font(.headline)
+            HStack(spacing: 12) {
+                AppIcon(path: bundlePath.isEmpty ? nil : bundlePath).frame(width: 46, height: 46)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(appName.isEmpty ? model.t("chooseApp") : appName).font(.body.weight(.medium)).lineLimit(1)
+                    Text(bundleIdentifier.isEmpty ? model.t("selectedApp") : bundleIdentifier)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 12)
+                Button(appName.isEmpty ? model.t("chooseApp") : model.t("changeApp"), action: browseForApp)
+            }
+            .padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary))
+        }
+    }
+
+    private func browseForApp() {
+        let panel = NSOpenPanel()
+        panel.title = model.t("chooseApp")
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.applicationBundle]
+        guard panel.runModal() == .OK, let url = panel.url,
+              let bundle = Bundle(url: url), let identifier = bundle.bundleIdentifier else { return }
+        appName = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? url.deletingPathExtension().lastPathComponent
+        bundleIdentifier = identifier
+        bundlePath = url.path
+    }
+
+    private func save() {
+        let rule = LaunchRule(
+            id: original?.id ?? UUID(),
+            appName: appName,
+            bundleIdentifier: bundleIdentifier,
+            bundlePath: bundlePath,
+            delaySeconds: delaySeconds,
+            isEnabled: original?.isEnabled ?? true,
+            activateOnLaunch: activateOnLaunch
+        )
+        if original == nil {
+            if model.addLaunchRule(rule) { dismiss() }
+        } else {
+            model.updateLaunchRule(rule)
+            dismiss()
+        }
+    }
+}
+
 struct ActionSetting: View {
     @EnvironmentObject private var model: QuitterModel
     let title: String
@@ -828,6 +1282,11 @@ struct MenuBarView: View {
         Divider()
         Button(model.isEnforcing ? model.t("disableApp") : model.t("enableApp")) { model.isEnforcing.toggle() }
         Button(model.t("checkNow")) { model.evaluateRules() }
+        Divider()
+        Button(model.t("runNow")) { model.runLaunchPlanNow() }
+            .disabled(!model.isLaunchSchedulingEnabled || model.enabledLaunchCount == 0)
+        Button(model.t("cancelLaunches")) { model.cancelScheduledLaunches() }
+            .disabled(model.pendingLaunchCount == 0)
         Divider()
         Toggle(model.t("startAtLogin"), isOn: Binding(get: { model.launchesAtLogin }, set: { model.setLaunchAtLogin($0) }))
         Button(model.t("showApp")) { NSApp.activate(ignoringOtherApps: true); NSApp.windows.first?.makeKeyAndOrderFront(nil) }
