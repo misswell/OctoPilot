@@ -72,6 +72,9 @@ enum AppText {
         "browseApplications": "从磁盘选择应用", "noRunningApps": "未检测到可选的运行应用",
         "configFile": "配置文件", "configDescription": "规则和偏好保存在此本机文件中。更新或替换 OctoQuit.app 不会影响它。",
         "revealInFinder": "在访达中显示", "configSaveError": "无法保存配置文件：%@",
+        "importQuitter": "导入 Quitter 配置…", "importQuitterDescription": "导入旧规则；已存在相同应用标识的规则会被跳过。",
+        "importQuitterSuccess": "已导入 %d 条规则，跳过 %d 条重复或无效规则。", "importQuitterEmpty": "没有发现可导入的新规则。",
+        "importQuitterError": "无法导入配置文件：%@", "importQuitterInvalid": "这不是受支持的 Quitter 偏好文件。",
         "languageDescription": "选择 OctoQuit 的显示语言。更改会立即生效。", "systemLanguage": "跟随系统",
         "english": "English", "simplifiedChinese": "简体中文", "checkNow": "立即检查", "startAtLogin": "登录时启动",
         "showApp": "显示 OctoQuit", "quitApp": "退出 OctoQuit", "enabledStatus": "OctoQuit：已启用",
@@ -111,6 +114,9 @@ enum AppText {
             "browseApplications": "Choose an app from disk", "noRunningApps": "No eligible running applications found",
             "configFile": "Configuration file", "configDescription": "Rules and preferences are stored in this local file. Updating or replacing OctoQuit.app will not affect it.",
             "revealInFinder": "Show in Finder", "configSaveError": "Couldn’t save the configuration file: %@",
+            "importQuitter": "Import Quitter Configuration…", "importQuitterDescription": "Import legacy rules; matching app identifiers already in your rules are skipped.",
+            "importQuitterSuccess": "Imported %d rules and skipped %d duplicate or invalid rules.", "importQuitterEmpty": "No new rules were found to import.",
+            "importQuitterError": "Couldn’t import the configuration file: %@", "importQuitterInvalid": "This is not a supported Quitter preferences file.",
             "minute": "minute", "minutes": "minutes", "language": "Language", "languageDescription": "Choose OctoQuit’s display language. Changes apply immediately.",
             "systemLanguage": "System Language", "english": "English", "simplifiedChinese": "Simplified Chinese", "checkNow": "Check now",
             "startAtLogin": "Start at Login", "showApp": "Show OctoQuit", "quitApp": "Quit OctoQuit", "enabledStatus": "OctoQuit: Enabled",
@@ -227,6 +233,65 @@ final class QuitterModel: ObservableObject {
     func revealConfigurationFile() {
         save()
         NSWorkspace.shared.activateFileViewerSelecting([configurationURL])
+    }
+
+    func importQuitterConfiguration(from url: URL) {
+        do {
+            let data = try Data(contentsOf: url)
+            let propertyList = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+            guard let root = propertyList as? [String: Any],
+                  let sourceRules = root["rules"] as? [[String: Any]] else {
+                throw ImportError.invalidFormat
+            }
+
+            let existingIdentifiers = Set(rules.map(\.bundleIdentifier))
+            var imported: [QuitRule] = []
+            var skipped = 0
+            for sourceRule in sourceRules {
+                guard let bundleIdentifier = sourceRule["bundleIdentifier"] as? String,
+                      let bundlePath = sourceRule["bundlePath"] as? String,
+                      !bundleIdentifier.isEmpty,
+                      !existingIdentifiers.contains(bundleIdentifier),
+                      !imported.contains(where: { $0.bundleIdentifier == bundleIdentifier }) else {
+                    skipped += 1
+                    continue
+                }
+
+                let hide = minutes(fromQuitterInterval: sourceRule["inactiveHideInterval"])
+                let quit = minutes(fromQuitterInterval: sourceRule["inactiveQuitInterval"])
+                let hiddenQuit = minutes(fromQuitterInterval: sourceRule["quitIfHiddenInterval"])
+                guard hide != nil || quit != nil || hiddenQuit != nil else {
+                    skipped += 1
+                    continue
+                }
+
+                imported.append(QuitRule(
+                    appName: appName(forBundlePath: bundlePath),
+                    bundleIdentifier: bundleIdentifier,
+                    bundlePath: bundlePath,
+                    inactiveHideMinutes: hide,
+                    inactiveQuitMinutes: quit,
+                    hiddenQuitMinutes: hiddenQuit
+                ))
+            }
+
+            guard !imported.isEmpty else {
+                alertMessage = t("importQuitterEmpty")
+                return
+            }
+            rules.append(contentsOf: imported)
+            if let active = root["active"] as? NSNumber {
+                isLoading = true
+                isEnforcing = active.boolValue
+                isLoading = false
+            }
+            save()
+            alertMessage = t("importQuitterSuccess", imported.count, skipped)
+        } catch ImportError.invalidFormat {
+            alertMessage = t("importQuitterInvalid")
+        } catch {
+            alertMessage = t("importQuitterError", error.localizedDescription)
+        }
     }
 
     func evaluateRules() {
@@ -354,6 +419,23 @@ final class QuitterModel: ObservableObject {
     private static func defaultConfigurationURL() -> URL {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return applicationSupport.appendingPathComponent("OctoQuit", isDirectory: true).appendingPathComponent("config.json")
+    }
+
+    private func minutes(fromQuitterInterval value: Any?) -> Int? {
+        guard let seconds = (value as? NSNumber)?.doubleValue, seconds > 0 else { return nil }
+        return max(1, Int((seconds / 60).rounded()))
+    }
+
+    private func appName(forBundlePath path: String) -> String {
+        let url = URL(fileURLWithPath: path)
+        let bundle = Bundle(url: url)
+        return (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? url.deletingPathExtension().lastPathComponent
+    }
+
+    private enum ImportError: LocalizedError {
+        case invalidFormat
     }
 
     func t(_ key: String, _ arguments: CVarArg...) -> String { AppText.value(key, language: language, arguments: arguments) }
@@ -753,8 +835,30 @@ struct SettingsView: View {
                     .textSelection(.enabled)
                 Button(model.t("revealInFinder")) { model.revealConfigurationFile() }
             }
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                Text(model.t("importQuitter")).font(.headline)
+                Text(model.t("importQuitterDescription")).font(.subheadline).foregroundStyle(.secondary)
+                Button(model.t("importQuitter"), action: importQuitterConfiguration)
+            }
             Spacer()
         }
         .padding(.horizontal, 36).padding(.top, 34).padding(.bottom, 30)
+    }
+
+    private func importQuitterConfiguration() {
+        let panel = NSOpenPanel()
+        panel.title = model.t("importQuitter")
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.propertyList]
+        let defaultFile = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Preferences/com.marcoarment.quitter.plist")
+        if FileManager.default.fileExists(atPath: defaultFile.path) {
+            panel.directoryURL = defaultFile.deletingLastPathComponent()
+            panel.nameFieldStringValue = defaultFile.lastPathComponent
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.importQuitterConfiguration(from: url)
     }
 }
