@@ -10,6 +10,8 @@
 	<string>com.misswell.octopilot</string>
 	<key>CFBundleName</key>
 	<string>OctoPilot</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
