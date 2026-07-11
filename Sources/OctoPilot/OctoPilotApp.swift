@@ -89,7 +89,7 @@ enum AppText {
         "rules": "退出", "settings": "设置", "addApp": "添加应用", "apps": "应用",
         "rulesSubtitle": "在应用闲置一段时间后自动隐藏或退出。",
         "dropApp": "拖入应用以添加规则", "invalidDrop": "请拖入 macOS 应用（.app）以创建规则。",
-        "duplicateRule": "已存在 \"%@\" 的规则。", "enforcing": "规则执行中", "paused": "规则已暂停",
+        "duplicateRule": "已存在 \"%@\" 的规则。", "selfRule": "OctoPilot 不能隐藏或退出自身。", "enforcing": "规则执行中", "paused": "规则已暂停",
         "enabledChecked": "%d 条已启用 · 检查于 %@", "noApps": "尚未添加应用",
         "noAppsDetail": "添加一个应用，在闲置后自动隐藏或退出。", "addFirstApp": "添加第一个应用",
         "edit": "编辑", "editRule": "编辑规则", "deleteRule": "删除规则",
@@ -146,6 +146,7 @@ enum AppText {
             "rules": "Exit", "settings": "Settings", "addApp": "Add app", "apps": "APPS",
             "rulesSubtitle": "Hide or quit apps after they’ve been inactive.", "dropApp": "Drop an app to add its rule",
             "invalidDrop": "Drop a macOS application (.app) to create a rule.", "duplicateRule": "A rule for \"%@\" already exists.",
+            "selfRule": "OctoPilot cannot hide or quit itself.",
             "enforcing": "Enforcing rules", "paused": "Rules paused", "enabledChecked": "%d enabled • checked %@",
             "noApps": "No apps yet", "noAppsDetail": "Add an app to automatically hide or quit it after inactivity.",
             "addFirstApp": "Add your first app", "edit": "Edit", "editRule": "Edit rule", "deleteRule": "Delete rule",
@@ -260,6 +261,10 @@ final class OctoPilotModel: ObservableObject {
 
     @discardableResult
     func addRule(_ rule: QuitRule) -> Bool {
+        guard !isOwnApplication(rule.bundleIdentifier) else {
+            alertMessage = t("selfRule")
+            return false
+        }
         guard !rules.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) else {
             alertMessage = t("duplicateRule", rule.appName)
             return false
@@ -271,6 +276,10 @@ final class OctoPilotModel: ObservableObject {
     }
 
     func updateRule(_ rule: QuitRule) {
+        guard !isOwnApplication(rule.bundleIdentifier) else {
+            alertMessage = t("selfRule")
+            return
+        }
         guard let index = rules.firstIndex(where: { $0.id == rule.id }) else { return }
         rules[index] = rule
         save()
@@ -380,6 +389,7 @@ final class OctoPilotModel: ObservableObject {
                 guard let bundleIdentifier = sourceRule["bundleIdentifier"] as? String,
                       let bundlePath = sourceRule["bundlePath"] as? String,
                       !bundleIdentifier.isEmpty,
+                      !isOwnApplication(bundleIdentifier),
                       !existingIdentifiers.contains(bundleIdentifier),
                       !imported.contains(where: { $0.bundleIdentifier == bundleIdentifier }) else {
                     skipped += 1
@@ -497,11 +507,12 @@ final class OctoPilotModel: ObservableObject {
         for app in NSWorkspace.shared.runningApplications {
             if let identifier = app.bundleIdentifier { runningApps[identifier] = app }
         }
-        let validRuleIDs = Set(rules.filter(\.isEnabled).map(\.id))
+        let enforceableRules = rules.filter { $0.isEnabled && !isOwnApplication($0.bundleIdentifier) }
+        let validRuleIDs = Set(enforceableRules.map(\.id))
         for id in Array(quitTasks.keys) where !validRuleIDs.contains(id) { cancelQuitTask(for: id) }
         for id in Array(quitDeadlines.keys) where !validRuleIDs.contains(id) { quitDeadlines[id] = nil }
 
-        for rule in rules where rule.isEnabled {
+        for rule in enforceableRules {
             evaluateQuitRule(rule, app: runningApps[rule.bundleIdentifier], now: now)
         }
         lastChecked = now
@@ -613,6 +624,11 @@ final class OctoPilotModel: ObservableObject {
     private func deadline(minutes: Int?, since date: Date?) -> Date? {
         guard let minutes, let date else { return nil }
         return date.addingTimeInterval(Double(minutes * 60))
+    }
+
+    private func isOwnApplication(_ bundleIdentifier: String) -> Bool {
+        guard let ownIdentifier = Bundle.main.bundleIdentifier else { return false }
+        return bundleIdentifier.caseInsensitiveCompare(ownIdentifier) == .orderedSame
     }
 
     private func setQuitDeadline(_ deadline: Date, for id: UUID) {
