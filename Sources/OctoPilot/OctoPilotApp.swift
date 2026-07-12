@@ -135,6 +135,7 @@ enum AppText {
         "enabledChecked": "%d 条已启用 · 检查于 %@", "noApps": "尚未添加应用",
         "noAppsDetail": "添加一个应用，在闲置后自动隐藏或退出。", "addFirstApp": "添加第一个应用",
         "edit": "编辑", "editRule": "编辑规则", "deleteRule": "删除规则", "remove": "移除",
+        "removeConfirmTitle": "确认移除", "removeConfirmMessage": "确定要移除“%@”吗？此操作会删除对应规则。",
         "hideAfter": "闲置 %d 分钟后隐藏", "quitAfter": "闲置 %d 分钟后退出", "quitHidden": "隐藏 %d 分钟后退出",
         "addRule": "添加应用规则", "editAppRule": "编辑应用规则", "ruleDetail": "选择一个应用，然后设置一个或多个自动操作。",
         "hideInactive": "闲置后隐藏", "quitInactive": "闲置后退出", "quitAfterHidden": "隐藏后退出",
@@ -193,6 +194,7 @@ enum AppText {
             "enforcing": "Enforcing rules", "paused": "Rules paused", "enabledChecked": "%d enabled • checked %@",
             "noApps": "No apps yet", "noAppsDetail": "Add an app to automatically hide or quit it after inactivity.",
             "addFirstApp": "Add your first app", "edit": "Edit", "editRule": "Edit rule", "deleteRule": "Delete rule", "remove": "Remove",
+            "removeConfirmTitle": "Confirm Removal", "removeConfirmMessage": "Remove “%@”? This will delete its rule.",
             "hideAfter": "Hide after %d min inactive", "quitAfter": "Quit after %d min inactive", "quitHidden": "Quit %d min after hiding",
             "addRule": "Add app rule", "editAppRule": "Edit app rule", "ruleDetail": "Choose an application, then choose one or more automatic actions.",
             "hideInactive": "Hide after inactivity", "quitInactive": "Quit after inactivity", "quitAfterHidden": "Quit after being hidden",
@@ -1091,6 +1093,7 @@ struct EmptyRulesView: View {
 
 struct RuleRow: View {
     @EnvironmentObject private var model: OctoPilotModel
+    @State private var showingRemoveConfirmation = false
     let rule: QuitRule
     let edit: () -> Void
     let toggle: () -> Void
@@ -1107,10 +1110,22 @@ struct RuleRow: View {
                 QuitCountdownBadge(deadline: deadline)
             }
             Button(model.t("edit"), action: edit).buttonStyle(.borderless)
-            Button(model.t("remove"), role: .destructive, action: remove).buttonStyle(.borderless)
+            Button { showingRemoveConfirmation = true } label: {
+                Image(systemName: "trash")
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+            .help(model.t("remove"))
             Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { _ in toggle() })).labelsHidden()
         }
         .padding(.vertical, 5)
+        .alert(model.t("removeConfirmTitle"), isPresented: $showingRemoveConfirmation) {
+            Button(model.t("remove"), role: .destructive, action: remove)
+            Button(model.t("cancel"), role: .cancel) {}
+        } message: {
+            Text(model.t("removeConfirmMessage", rule.appName))
+        }
     }
 
     private func ruleSummary(_ rule: QuitRule) -> String {
@@ -1371,6 +1386,7 @@ struct EmptyLaunchRulesView: View {
 
 struct LaunchRuleRow: View {
     @EnvironmentObject private var model: OctoPilotModel
+    @State private var showingRemoveConfirmation = false
     let rule: LaunchRule
     let edit: () -> Void
     let toggle: () -> Void
@@ -1387,10 +1403,22 @@ struct LaunchRuleRow: View {
                 LaunchStatusBadge(state: state)
             }
             Button(model.t("edit"), action: edit).buttonStyle(.borderless)
-            Button(model.t("remove"), role: .destructive, action: remove).buttonStyle(.borderless)
+            Button { showingRemoveConfirmation = true } label: {
+                Image(systemName: "trash")
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+            .help(model.t("remove"))
             Toggle("", isOn: Binding(get: { rule.isEnabled }, set: { _ in toggle() })).labelsHidden()
         }
         .padding(.vertical, 5)
+        .alert(model.t("removeConfirmTitle"), isPresented: $showingRemoveConfirmation) {
+            Button(model.t("remove"), role: .destructive, action: remove)
+            Button(model.t("cancel"), role: .cancel) {}
+        } message: {
+            Text(model.t("removeConfirmMessage", rule.appName))
+        }
     }
 
 }
