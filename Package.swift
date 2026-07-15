@@ -5,5 +5,8 @@ let package = Package(
     name: "OctoPilot",
     platforms: [.macOS(.v14)],
     products: [.executable(name: "OctoPilot", targets: ["OctoPilot"])],
-    targets: [.executableTarget(name: "OctoPilot")]
+    targets: [
+        .executableTarget(name: "OctoPilot"),
+        .testTarget(name: "OctoPilotTests", dependencies: ["OctoPilot"])
+    ]
 )

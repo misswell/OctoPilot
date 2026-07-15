@@ -46,11 +46,49 @@ private struct QuitRuntimeState {
     var didCloseSinceActive = false
 }
 
+private enum WindowCloseResult {
+    case noClosableWindows
+    case closed
+    case failed
+
+    var postLaunchResult: Bool? {
+        switch self {
+        case .noClosableWindows: nil
+        case .closed: true
+        case .failed: false
+        }
+    }
+}
+
 struct QuitterImportPreview: Identifiable {
     let id = UUID()
     let rules: [QuitRule]
     let skippedCount: Int
     let isEnforcing: Bool?
+}
+
+enum LaunchVisibilityMode: String, CaseIterable, Codable, Identifiable {
+    case foreground
+    case hidden
+    case closeWindows
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .foreground: "launchModeForeground"
+        case .hidden: "launchModeHidden"
+        case .closeWindows: "launchModeCloseWindows"
+        }
+    }
+
+    var hintKey: String {
+        switch self {
+        case .foreground: "launchForegroundHint"
+        case .hidden: "launchHiddenHint"
+        case .closeWindows: "launchCloseWindowsHint"
+        }
+    }
 }
 
 struct LaunchRule: Identifiable, Codable, Hashable {
@@ -60,7 +98,56 @@ struct LaunchRule: Identifiable, Codable, Hashable {
     var bundlePath: String
     var delaySeconds: Int = 30
     var isEnabled = true
-    var activateOnLaunch = false
+    var visibilityMode: LaunchVisibilityMode = .hidden
+
+    init(
+        id: UUID = UUID(),
+        appName: String,
+        bundleIdentifier: String,
+        bundlePath: String,
+        delaySeconds: Int = 30,
+        isEnabled: Bool = true,
+        visibilityMode: LaunchVisibilityMode = .hidden
+    ) {
+        self.id = id
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.bundlePath = bundlePath
+        self.delaySeconds = delaySeconds
+        self.isEnabled = isEnabled
+        self.visibilityMode = visibilityMode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, appName, bundleIdentifier, bundlePath, delaySeconds, isEnabled, visibilityMode, activateOnLaunch
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        appName = try container.decode(String.self, forKey: .appName)
+        bundleIdentifier = try container.decode(String.self, forKey: .bundleIdentifier)
+        bundlePath = try container.decode(String.self, forKey: .bundlePath)
+        delaySeconds = try container.decodeIfPresent(Int.self, forKey: .delaySeconds) ?? 30
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        if let storedMode = try container.decodeIfPresent(LaunchVisibilityMode.self, forKey: .visibilityMode) {
+            visibilityMode = storedMode
+        } else {
+            visibilityMode = try container.decodeIfPresent(Bool.self, forKey: .activateOnLaunch) == true ? .foreground : .hidden
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(appName, forKey: .appName)
+        try container.encode(bundleIdentifier, forKey: .bundleIdentifier)
+        try container.encode(bundlePath, forKey: .bundlePath)
+        try container.encode(delaySeconds, forKey: .delaySeconds)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(visibilityMode, forKey: .visibilityMode)
+        try container.encode(visibilityMode == .foreground, forKey: .activateOnLaunch)
+    }
 }
 
 enum LaunchRuntimeState: Equatable {
@@ -165,8 +252,12 @@ enum AppText {
         , "launch": "启动", "launchSubtitle": "在登录后按设定延迟启动应用。", "launchApps": "启动应用",
         "addLaunchApp": "添加启动应用", "addLaunchRule": "添加启动规则", "editLaunchRule": "编辑启动规则",
         "launchRuleDetail": "选择一个应用，并设置从 OctoPilot 登录启动开始计算的延迟秒数。",
-        "launchAfter": "登录后 %d 秒启动", "delaySeconds": "延迟秒数", "activateOnLaunch": "启动后显示到前台",
-        "launchVisibilityHint": "关闭时，应用启动后将自动隐藏，并恢复之前的前台应用。",
+        "launchAfter": "登录后 %d 秒启动", "delaySeconds": "延迟秒数", "launchVisibility": "启动后模式",
+        "launchModeForeground": "显示到前台", "launchModeHidden": "隐藏应用", "launchModeCloseWindows": "关闭窗口并保留后台（Dock-only）",
+        "launchForegroundHint": "应用启动后显示到前台。",
+        "launchHiddenHint": "应用启动后自动隐藏，并恢复之前的前台应用。",
+        "launchCloseWindowsHint": "关闭应用的可关闭窗口，但保留后台或菜单栏进程。Dock 图标是否消失由该应用决定。",
+        "launchCloseFailed": "应用已启动，但无法关闭其窗口",
         "runNow": "立即执行", "cancelLaunches": "取消待启动任务", "launchEnabled": "启动计划已启用", "launchPaused": "启动计划已暂停",
         "launchIn": "%d 秒后启动", "launching": "正在启动", "launched": "已启动", "alreadyRunning": "已跳过：应用已在运行",
         "launchCancelled": "已取消", "launchFailed": "启动失败：%@", "noLaunchApps": "尚未添加启动应用",
@@ -225,8 +316,12 @@ enum AppText {
             "launch": "Launch", "launchSubtitle": "Launch apps after their configured delay following login.", "launchApps": "LAUNCH APPS",
             "addLaunchApp": "Add launch app", "addLaunchRule": "Add launch rule", "editLaunchRule": "Edit launch rule",
             "launchRuleDetail": "Choose an app and set its delay in seconds from when OctoPilot starts at login.",
-            "launchAfter": "Launch %d sec after login", "delaySeconds": "Delay in seconds", "activateOnLaunch": "Bring to front after launching",
-            "launchVisibilityHint": "When off, the app is hidden after launch and the previous foreground app is restored.",
+            "launchAfter": "Launch %d sec after login", "delaySeconds": "Delay in seconds", "launchVisibility": "After launch",
+            "launchModeForeground": "Bring to front", "launchModeHidden": "Hide application", "launchModeCloseWindows": "Close windows, keep background (Dock-only)",
+            "launchForegroundHint": "Brings the application to the foreground after launch.",
+            "launchHiddenHint": "Hides the application after launch and restores the previous foreground app.",
+            "launchCloseWindowsHint": "Closes the app’s closable windows while keeping its background or menu-bar process running. Whether its Dock icon disappears is controlled by that app.",
+            "launchCloseFailed": "The app launched, but its windows could not be closed",
             "runNow": "Run now", "cancelLaunches": "Cancel scheduled launches", "launchEnabled": "Launch plan enabled", "launchPaused": "Launch plan paused",
             "launchIn": "Launches in %d sec", "launching": "Launching", "launched": "Launched", "alreadyRunning": "Skipped: already running",
             "launchCancelled": "Cancelled", "launchFailed": "Launch failed: %@", "noLaunchApps": "No launch apps yet",
@@ -251,7 +346,7 @@ final class OctoPilotModel: ObservableObject {
         var lastScheduledBootSession: String?
 
         init(rules: [QuitRule], isEnforcing: Bool, language: AppLanguage, launchRules: [LaunchRule], isLaunchSchedulingEnabled: Bool, lastScheduledBootSession: String?) {
-            version = 3
+            version = 4
             self.rules = rules
             self.isEnforcing = isEnforcing
             self.language = language
@@ -625,7 +720,7 @@ final class OctoPilotModel: ObservableObject {
 
         var nextDeadlines = [Date]()
         if let closeDeadline, closeDeadline <= now {
-            if closeWindows(of: app) {
+            if closeWindows(of: app) != .failed {
                 state.didCloseSinceActive = true
             } else {
                 nextDeadlines.append(now.addingTimeInterval(60))
@@ -659,29 +754,34 @@ final class OctoPilotModel: ObservableObject {
         scheduleQuitWake(for: rule.id, at: nextDeadline, now: now)
     }
 
-    private func closeWindows(of application: NSRunningApplication) -> Bool {
+    private func closeWindows(of application: NSRunningApplication) -> WindowCloseResult {
         guard AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) else {
             if alertMessage == nil { alertMessage = t("accessibilityRequired") }
-            return false
+            return .failed
         }
 
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         var windowsValue: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsValue)
-        guard result == .success else { return result == .noValue || result == .attributeUnsupported }
-        guard let windows = windowsValue as? [AXUIElement] else { return true }
+        guard result == .success else {
+            return result == .noValue || result == .attributeUnsupported ? .noClosableWindows : .failed
+        }
+        guard let windows = windowsValue as? [AXUIElement] else { return .noClosableWindows }
 
+        var didAttemptClose = false
         var actionFailed = false
         for window in windows {
             var closeButtonValue: CFTypeRef?
             guard AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &closeButtonValue) == .success,
                   let closeButtonValue else { continue }
+            didAttemptClose = true
             let closeButton = unsafeDowncast(closeButtonValue, to: AXUIElement.self)
             if AXUIElementPerformAction(closeButton, kAXPressAction as CFString) != .success {
                 actionFailed = true
             }
         }
-        return !actionFailed
+        if actionFailed { return .failed }
+        return didAttemptClose ? .closed : .noClosableWindows
     }
 
     private func scheduleQuitWake(for id: UUID, at deadline: Date, now: Date) {
@@ -894,12 +994,20 @@ final class OctoPilotModel: ObservableObject {
         }
         launchStates[ruleID] = .launching
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = rule.activateOnLaunch
+        configuration.activates = rule.visibilityMode == .foreground
         let previousFrontmostApplication = NSWorkspace.shared.frontmostApplication
         do {
             let launchedApplication = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
-            if !rule.activateOnLaunch {
+            switch rule.visibilityMode {
+            case .foreground:
+                break
+            case .hidden:
                 await hideAfterLaunch(launchedApplication, restoring: previousFrontmostApplication)
+            case .closeWindows:
+                guard await closeWindowsAfterLaunch(launchedApplication, restoring: previousFrontmostApplication) else {
+                    launchStates[ruleID] = .failed(t("launchCloseFailed"))
+                    return
+                }
             }
             launchStates[ruleID] = .launched
         } catch {
@@ -908,6 +1016,23 @@ final class OctoPilotModel: ObservableObject {
     }
 
     private func hideAfterLaunch(_ application: NSRunningApplication, restoring previousApplication: NSRunningApplication?) async {
+        _ = await retryPostLaunchAction(application, restoring: previousApplication) {
+            application.hide()
+        }
+    }
+
+    private func closeWindowsAfterLaunch(_ application: NSRunningApplication, restoring previousApplication: NSRunningApplication?) async -> Bool {
+        await retryPostLaunchAction(application, restoring: previousApplication) {
+            self.closeWindows(of: application).postLaunchResult
+        }
+    }
+
+    private func retryPostLaunchAction(
+        _ application: NSRunningApplication,
+        restoring previousApplication: NSRunningApplication?,
+        action: () -> Bool?
+    ) async -> Bool {
+        var completed = true
         // Some apps create or reactivate their first window after the workspace
         // launch callback returns, so retry briefly without keeping a poller alive.
         for delayMilliseconds in [0, 250, 750, 1_500] {
@@ -915,12 +1040,12 @@ final class OctoPilotModel: ObservableObject {
                 do {
                     try await Task.sleep(for: .milliseconds(delayMilliseconds))
                 } catch {
-                    return
+                    return completed
                 }
             }
-            guard !application.isTerminated else { return }
+            guard !application.isTerminated else { return false }
             let stoleFocus = application.isActive
-            application.hide()
+            if let result = action() { completed = result }
             if stoleFocus,
                let previousApplication,
                !previousApplication.isTerminated,
@@ -928,6 +1053,7 @@ final class OctoPilotModel: ObservableObject {
                 previousApplication.activate(options: [])
             }
         }
+        return !application.isTerminated && completed
     }
 
     private func cancelLaunchTask(for id: UUID, markCancelled: Bool) {
@@ -1472,7 +1598,8 @@ struct LaunchRuleRow: View {
             AppIcon(path: rule.bundlePath)
             VStack(alignment: .leading, spacing: 4) {
                 Text(rule.appName).font(.body.weight(.semibold))
-                Text(model.t("launchAfter", rule.delaySeconds)).font(.caption).foregroundStyle(.secondary)
+                Text(model.t("launchAfter", rule.delaySeconds) + " • " + model.t(rule.visibilityMode.titleKey))
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             if let state = model.launchStates[rule.id] {
@@ -1541,7 +1668,7 @@ struct LaunchRuleEditor: View {
     @State private var bundleIdentifier = ""
     @State private var bundlePath = ""
     @State private var delaySeconds = 30
-    @State private var activateOnLaunch = false
+    @State private var visibilityMode: LaunchVisibilityMode = .hidden
     @State private var runningApps: [NSRunningApplication] = []
 
     init(rule: LaunchRule?) {
@@ -1550,7 +1677,7 @@ struct LaunchRuleEditor: View {
         _bundleIdentifier = State(initialValue: rule?.bundleIdentifier ?? "")
         _bundlePath = State(initialValue: rule?.bundlePath ?? "")
         _delaySeconds = State(initialValue: rule?.delaySeconds ?? 30)
-        _activateOnLaunch = State(initialValue: rule?.activateOnLaunch ?? false)
+        _visibilityMode = State(initialValue: rule?.visibilityMode ?? .hidden)
     }
 
     var body: some View {
@@ -1567,8 +1694,17 @@ struct LaunchRuleEditor: View {
                 Stepper("", value: $delaySeconds, in: 0...86_400).labelsHidden()
                 Text(model.t("seconds")).font(.caption).foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
             }
-            Toggle(model.t("activateOnLaunch"), isOn: $activateOnLaunch).toggleStyle(.checkbox)
-            Text(model.t("launchVisibilityHint"))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(model.t("launchVisibility")).font(.headline)
+                Picker(model.t("launchVisibility"), selection: $visibilityMode) {
+                    ForEach(LaunchVisibilityMode.allCases) { mode in
+                        Text(model.t(mode.titleKey)).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.radioGroup)
+            }
+            Text(model.t(visibilityMode.hintKey))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -1580,7 +1716,7 @@ struct LaunchRuleEditor: View {
                     .disabled(bundleIdentifier.isEmpty || bundlePath.isEmpty)
             }
         }
-        .padding(28).frame(width: 520, height: 390)
+        .padding(28).frame(width: 560, height: 500)
         .onAppear(perform: refreshRunningApps)
         .onChange(of: delaySeconds) { _, value in delaySeconds = min(max(value, 0), 86_400) }
     }
@@ -1663,7 +1799,7 @@ struct LaunchRuleEditor: View {
             bundlePath: bundlePath,
             delaySeconds: delaySeconds,
             isEnabled: original?.isEnabled ?? true,
-            activateOnLaunch: activateOnLaunch
+            visibilityMode: visibilityMode
         )
         if original == nil {
             if model.addLaunchRule(rule) { dismiss() }
