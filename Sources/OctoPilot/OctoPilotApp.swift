@@ -265,7 +265,9 @@ enum AppText {
         "accessibilityRequired": "“关闭窗口”需要辅助功能权限。如果升级后已勾选但仍无效，可一键重置权限并退出 OctoPilot；重新打开后再允许权限。当前应用：%@",
         "openAccessibilitySettings": "打开辅助功能设置",
         "resetAccessibility": "重置权限并退出",
+        "accessibilityRecoveryHint": "系统仍未确认当前版本的权限。如果列表中已开启但这里仍显示，请直接重置旧授权记录。",
         "accessibilityResetFailed": "无法重置辅助功能权限：%@",
+        "accessibilityResetStatus": "tccutil 退出状态：%d",
         "cancel": "取消", "save": "存储", "chooseApp": "选择应用", "chooseRunning": "选择正在运行的应用",
         "browse": "浏览…", "minute": "分钟", "minutes": "分钟", "language": "语言",
         "application": "应用", "selectedApp": "已选应用", "changeApp": "更换应用", "runningApps": "正在运行的应用",
@@ -333,7 +335,9 @@ enum AppText {
             "accessibilityRequired": "Closing windows requires Accessibility access. If it remains unavailable after an update, reset the permission and quit OctoPilot in one step, then reopen it and grant access. Current app: %@",
             "openAccessibilitySettings": "Open Accessibility Settings",
             "resetAccessibility": "Reset Permission and Quit",
+            "accessibilityRecoveryHint": "macOS still does not trust this version. If it is already enabled in the list, reset the stale permission record here.",
             "accessibilityResetFailed": "Couldn’t reset Accessibility access: %@",
+            "accessibilityResetStatus": "tccutil exited with status %d",
             "cancel": "Cancel", "save": "Save", "chooseApp": "Choose an app", "chooseRunning": "Choose a running app", "browse": "Browse…",
             "application": "Application", "selectedApp": "Selected application", "changeApp": "Change app", "runningApps": "Running applications",
             "browseApplications": "Choose an app from disk", "noRunningApps": "No eligible running applications found",
@@ -454,13 +458,13 @@ final class OctoPilotModel: ObservableObject {
     var configurationFilePath: String { configurationURL.path }
 
     @discardableResult
-    func requestWindowControlAccess() -> Bool {
+    func requestWindowControlAccess(presentRecoveryGuidance: Bool = true) -> Bool {
         let trusted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        if !trusted { showWindowControlGuidance() }
+        if !trusted && presentRecoveryGuidance { showWindowControlGuidance() }
         return trusted
     }
 
-    private func hasWindowControlAccess() -> Bool {
+    func hasWindowControlAccess() -> Bool {
         AXIsProcessTrusted()
     }
 
@@ -475,18 +479,23 @@ final class OctoPilotModel: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    func resetAccessibilityAndQuit() {
+    @discardableResult
+    func resetAccessibilityAndQuit(presentFailureAlert: Bool = true) -> String? {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.misswell.octopilot"
         do {
             let status = try AccessibilityResetCommand(bundleIdentifier: bundleIdentifier).run()
             guard status == 0 else {
-                showAlert(t("accessibilityResetFailed", "tccutil exited with status \(status)"))
-                return
+                let message = t("accessibilityResetFailed", t("accessibilityResetStatus", status))
+                if presentFailureAlert { showAlert(message) }
+                return message
             }
             AccessibilityRecoveryRequest.schedule()
             NSApp.terminate(nil)
+            return nil
         } catch {
-            showAlert(t("accessibilityResetFailed", error.localizedDescription))
+            let message = t("accessibilityResetFailed", error.localizedDescription)
+            if presentFailureAlert { showAlert(message) }
+            return message
         }
     }
 
@@ -1487,6 +1496,34 @@ struct AppIcon: View {
     }
 }
 
+struct AccessibilityRecoveryView: View {
+    @EnvironmentObject private var model: OctoPilotModel
+    @State private var resetFailureMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(model.t("accessibilityRecoveryHint"), systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            HStack {
+                Button(model.t("openAccessibilitySettings")) {
+                    model.openAccessibilitySettings()
+                }
+                Button(model.t("resetAccessibility"), role: .destructive) {
+                    resetFailureMessage = model.resetAccessibilityAndQuit(presentFailureAlert: false)
+                }
+            }
+            if let resetFailureMessage {
+                Text(resetFailureMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.orange.opacity(0.35)))
+    }
+}
+
 struct RuleEditor: View {
     @EnvironmentObject private var model: OctoPilotModel
     @Environment(\.dismiss) private var dismiss
@@ -1503,6 +1540,7 @@ struct RuleEditor: View {
     @State private var hiddenQuitEnabled = false
     @State private var hiddenQuitMinutes = 10
     @State private var runningApps: [NSRunningApplication] = []
+    @State private var needsAccessibilityRecovery = false
 
     init(rule: QuitRule?) {
         original = rule
@@ -1528,15 +1566,24 @@ struct RuleEditor: View {
             ActionSetting(title: model.t("hideInactive"), enabled: $hideEnabled, minutes: $hideMinutes)
             ActionSetting(title: model.t("closeInactive"), enabled: $closeEnabled, minutes: $closeMinutes)
             Text(model.t("closeWindowHint")).font(.caption).foregroundStyle(.secondary)
+            if closeEnabled && needsAccessibilityRecovery {
+                AccessibilityRecoveryView()
+            }
             ActionSetting(title: model.t("quitInactive"), enabled: $inactiveQuitEnabled, minutes: $inactiveQuitMinutes)
             ActionSetting(title: model.t("quitAfterHidden"), enabled: $hiddenQuitEnabled, minutes: $hiddenQuitMinutes)
             Spacer()
             HStack { Spacer(); Button(model.t("cancel")) { dismiss() }; Button(original == nil ? model.t("addApp") : model.t("save")) { save() }.buttonStyle(.borderedProminent).disabled(bundleIdentifier.isEmpty || !(hideEnabled || closeEnabled || inactiveQuitEnabled || hiddenQuitEnabled)) }
         }
-        .padding(28).frame(width: 520, height: 625)
-        .onAppear { runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }.sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") } }
+        .padding(28).frame(width: 520, height: needsAccessibilityRecovery ? 700 : 625)
+        .onAppear {
+            runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }.sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+            needsAccessibilityRecovery = closeEnabled && !model.hasWindowControlAccess()
+        }
         .onChange(of: closeEnabled) { _, enabled in
-            if enabled { model.requestWindowControlAccess() }
+            needsAccessibilityRecovery = enabled && !model.requestWindowControlAccess(presentRecoveryGuidance: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if closeEnabled { needsAccessibilityRecovery = !model.hasWindowControlAccess() }
         }
     }
 
@@ -1785,6 +1832,7 @@ struct LaunchRuleEditor: View {
     @State private var delaySeconds = 30
     @State private var visibilityMode: LaunchVisibilityMode = .hidden
     @State private var runningApps: [NSRunningApplication] = []
+    @State private var needsAccessibilityRecovery = false
 
     init(rule: LaunchRule?) {
         original = rule
@@ -1822,6 +1870,9 @@ struct LaunchRuleEditor: View {
             Text(model.t(visibilityMode.hintKey))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if visibilityMode.requiresAccessibility && needsAccessibilityRecovery {
+                AccessibilityRecoveryView()
+            }
             Spacer()
             HStack {
                 Spacer()
@@ -1831,11 +1882,17 @@ struct LaunchRuleEditor: View {
                     .disabled(bundleIdentifier.isEmpty || bundlePath.isEmpty)
             }
         }
-        .padding(28).frame(width: 560, height: 500)
-        .onAppear(perform: refreshRunningApps)
+        .padding(28).frame(width: 560, height: needsAccessibilityRecovery ? 590 : 500)
+        .onAppear {
+            refreshRunningApps()
+            needsAccessibilityRecovery = visibilityMode.requiresAccessibility && !model.hasWindowControlAccess()
+        }
         .onChange(of: delaySeconds) { _, value in delaySeconds = min(max(value, 0), 86_400) }
         .onChange(of: visibilityMode) { _, mode in
-            if mode.requiresAccessibility { model.requestWindowControlAccess() }
+            needsAccessibilityRecovery = mode.requiresAccessibility && !model.requestWindowControlAccess(presentRecoveryGuidance: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if visibilityMode.requiresAccessibility { needsAccessibilityRecovery = !model.hasWindowControlAccess() }
         }
     }
 
