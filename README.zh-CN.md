@@ -37,7 +37,11 @@ OctoPilot 是一款原生 macOS 菜单栏应用。它会按照你为每个应用
 open OctoPilot.app
 ```
 
-构建出的应用位于项目根目录的 `OctoPilot.app`。“关闭窗口”动作需要在“系统设置 → 隐私与安全性 → 辅助功能”中允许 OctoPilot。目标应用关闭窗口后是否隐藏 Dock 图标由目标应用自身决定。
+构建出的应用位于项目根目录的 `OctoPilot.app`。“关闭窗口”动作需要在“系统设置 → 隐私与安全性 → 辅助功能”中允许 OctoPilot；选择该模式时会立即触发系统授权提示。目标应用关闭窗口后是否隐藏 Dock 图标由目标应用自身决定。
+
+当前本地与 GitHub Release 构建使用 ad-hoc 签名，因此每次更新都可能产生新的代码身份，macOS 可能要求重新授予辅助功能权限。要让授权在版本升级后稳定继承，需要使用同一 Developer ID 证书签名后再分发。
+
+如果升级后辅助功能列表中已经勾选 OctoPilot，但“关闭窗口”仍提示无权限，仅关闭再打开开关可能不会更新旧签名记录。请先从菜单栏彻底退出 OctoPilot（关闭窗口不会退出后台进程），再从列表中移除旧条目，点击 `+` 重新添加当前 `/Applications/OctoPilot.app`，然后重新打开 OctoPilot。若选中 OctoPilot 时“移除”按钮为灰色，请退出 OctoPilot 后在终端运行 `tccutil reset Accessibility com.misswell.octopilot`，再重新添加。运行规则只会静默检查权限，不会在后台反复重新请求。
 
 ## GitHub Actions
 

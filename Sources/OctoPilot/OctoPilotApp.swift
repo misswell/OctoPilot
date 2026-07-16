@@ -73,6 +73,7 @@ enum LaunchVisibilityMode: String, CaseIterable, Codable, Identifiable {
     case closeWindows
 
     var id: String { rawValue }
+    var requiresAccessibility: Bool { self == .closeWindows }
 
     var titleKey: String {
         switch self {
@@ -230,7 +231,8 @@ enum AppText {
         "addRule": "添加应用规则", "editAppRule": "编辑应用规则", "ruleDetail": "选择一个应用，然后设置一个或多个自动操作。",
         "hideInactive": "闲置后隐藏", "closeInactive": "闲置后关闭窗口", "quitInactive": "闲置后退出", "quitAfterHidden": "隐藏后退出",
         "closeWindowHint": "关闭应用的可关闭窗口，但保留后台进程。Dock 图标是否消失由该应用决定。",
-        "accessibilityRequired": "“关闭窗口”需要辅助功能权限。请在系统设置 → 隐私与安全性 → 辅助功能中允许 OctoPilot。",
+        "accessibilityRequired": "“关闭窗口”需要辅助功能权限。如果升级后已勾选但仍无效，请先从菜单栏彻底退出 OctoPilot，再移除旧条目并重新添加当前应用（%@）。如果“移除”按钮为灰色，请在终端运行：tccutil reset Accessibility com.misswell.octopilot",
+        "openAccessibilitySettings": "打开辅助功能设置",
         "cancel": "取消", "save": "存储", "chooseApp": "选择应用", "chooseRunning": "选择正在运行的应用",
         "browse": "浏览…", "minute": "分钟", "minutes": "分钟", "language": "语言",
         "application": "应用", "selectedApp": "已选应用", "changeApp": "更换应用", "runningApps": "正在运行的应用",
@@ -295,7 +297,8 @@ enum AppText {
             "addRule": "Add app rule", "editAppRule": "Edit app rule", "ruleDetail": "Choose an application, then choose one or more automatic actions.",
             "hideInactive": "Hide after inactivity", "closeInactive": "Close windows after inactivity", "quitInactive": "Quit after inactivity", "quitAfterHidden": "Quit after being hidden",
             "closeWindowHint": "Closes the app’s closable windows while leaving its process running. Whether its Dock icon disappears is controlled by that app.",
-            "accessibilityRequired": "Closing windows requires Accessibility access. Allow OctoPilot in System Settings → Privacy & Security → Accessibility.",
+            "accessibilityRequired": "Closing windows requires Accessibility access. If it remains unavailable after an update, fully quit OctoPilot, remove the old entry, and add the current app again (%@). If Remove is disabled, run this in Terminal: tccutil reset Accessibility com.misswell.octopilot",
+            "openAccessibilitySettings": "Open Accessibility Settings",
             "cancel": "Cancel", "save": "Save", "chooseApp": "Choose an app", "chooseRunning": "Choose a running app", "browse": "Browse…",
             "application": "Application", "selectedApp": "Selected application", "changeApp": "Change app", "runningApps": "Running applications",
             "browseApplications": "Choose an app from disk", "noRunningApps": "No eligible running applications found",
@@ -374,6 +377,7 @@ final class OctoPilotModel: ObservableObject {
     @Published var isLaunchSchedulingEnabled = true { didSet { launchSchedulingChanged() } }
     @Published private(set) var lastChecked = Date()
     @Published var alertMessage: String?
+    @Published private(set) var alertOffersAccessibilitySettings = false
     @Published private(set) var launchesAtLogin = false
     @Published var language: AppLanguage = .system { didSet { saveIfReady() } }
     private var launchTasks: [UUID: Task<Void, Never>] = [:]
@@ -413,13 +417,44 @@ final class OctoPilotModel: ObservableObject {
     var configurationFilePath: String { configurationURL.path }
 
     @discardableResult
+    func requestWindowControlAccess() -> Bool {
+        let trusted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        if !trusted { showWindowControlGuidance() }
+        return trusted
+    }
+
+    private func hasWindowControlAccess() -> Bool {
+        AXIsProcessTrusted()
+    }
+
+    private func showWindowControlGuidance() {
+        alertOffersAccessibilitySettings = true
+        alertMessage = t("accessibilityRequired", Bundle.main.bundleURL.path)
+    }
+
+    func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func dismissAlert() {
+        alertMessage = nil
+        alertOffersAccessibilitySettings = false
+    }
+
+    func showAlert(_ message: String) {
+        alertOffersAccessibilitySettings = false
+        alertMessage = message
+    }
+
+    @discardableResult
     func addRule(_ rule: QuitRule) -> Bool {
         guard !isOwnApplication(rule.bundleIdentifier) else {
-            alertMessage = t("selfRule")
+            showAlert(t("selfRule"))
             return false
         }
         guard !rules.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) else {
-            alertMessage = t("duplicateRule", rule.appName)
+            showAlert(t("duplicateRule", rule.appName))
             return false
         }
         rules.append(rule)
@@ -430,7 +465,7 @@ final class OctoPilotModel: ObservableObject {
 
     func updateRule(_ rule: QuitRule) {
         guard !isOwnApplication(rule.bundleIdentifier) else {
-            alertMessage = t("selfRule")
+            showAlert(t("selfRule"))
             return
         }
         guard let index = rules.firstIndex(where: { $0.id == rule.id }) else { return }
@@ -442,7 +477,7 @@ final class OctoPilotModel: ObservableObject {
     @discardableResult
     func addLaunchRule(_ rule: LaunchRule) -> Bool {
         guard !launchRules.contains(where: { $0.bundleIdentifier == rule.bundleIdentifier }) else {
-            alertMessage = t("launchDuplicate", rule.appName)
+            showAlert(t("launchDuplicate", rule.appName))
             return false
         }
         launchRules.append(rule)
@@ -506,7 +541,7 @@ final class OctoPilotModel: ObservableObject {
             else { try SMAppService.mainApp.unregister() }
             refreshLoginItemState()
         } catch {
-            alertMessage = t("loginError", error.localizedDescription)
+            showAlert(t("loginError", error.localizedDescription))
             refreshLoginItemState()
         }
     }
@@ -523,7 +558,7 @@ final class OctoPilotModel: ObservableObject {
     func prepareQuitterImportFromDefaultLocation() -> QuitterImportPreview? {
         let url = Self.defaultQuitterConfigurationURL()
         guard FileManager.default.fileExists(atPath: url.path) else {
-            alertMessage = t("importQuitterNotFound", url.path)
+            showAlert(t("importQuitterNotFound", url.path))
             return nil
         }
 
@@ -568,15 +603,15 @@ final class OctoPilotModel: ObservableObject {
             }
 
             guard !imported.isEmpty else {
-                alertMessage = t("importQuitterEmpty")
+                showAlert(t("importQuitterEmpty"))
                 return nil
             }
             let importedEnforcementState = (root["active"] as? NSNumber)?.boolValue
             return QuitterImportPreview(rules: imported, skippedCount: skipped, isEnforcing: importedEnforcementState)
         } catch ImportError.invalidFormat {
-            alertMessage = t("importQuitterInvalid")
+            showAlert(t("importQuitterInvalid"))
         } catch {
-            alertMessage = t("importQuitterError", error.localizedDescription)
+            showAlert(t("importQuitterError", error.localizedDescription))
         }
         return nil
     }
@@ -589,7 +624,7 @@ final class OctoPilotModel: ObservableObject {
             isLoading = false
         }
         save()
-        alertMessage = t("importQuitterSuccess", preview.rules.count, preview.skippedCount)
+        showAlert(t("importQuitterSuccess", preview.rules.count, preview.skippedCount))
     }
 
     func evaluateRules() {
@@ -756,10 +791,7 @@ final class OctoPilotModel: ObservableObject {
     }
 
     private func closeWindows(of application: NSRunningApplication) -> WindowCloseResult {
-        guard AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) else {
-            if alertMessage == nil { alertMessage = t("accessibilityRequired") }
-            return .failed
-        }
+        guard hasWindowControlAccess() else { return .failed }
 
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         var windowsValue: CFTypeRef?
@@ -909,7 +941,7 @@ final class OctoPilotModel: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(configuration).write(to: configurationURL, options: .atomic)
         } catch {
-            alertMessage = t("configSaveError", error.localizedDescription)
+            showAlert(t("configSaveError", error.localizedDescription))
         }
     }
 
@@ -1147,8 +1179,14 @@ struct ContentView: View {
         .sheet(item: $editingRule) { rule in RuleEditor(rule: rule).environmentObject(model) }
         .sheet(isPresented: $showingLaunchAdd) { LaunchRuleEditor(rule: nil).environmentObject(model) }
         .sheet(item: $editingLaunchRule) { rule in LaunchRuleEditor(rule: rule).environmentObject(model) }
-        .alert("OctoPilot", isPresented: Binding(get: { model.alertMessage != nil }, set: { if !$0 { model.alertMessage = nil } })) {
-            Button("OK", role: .cancel) { model.alertMessage = nil }
+        .alert("OctoPilot", isPresented: Binding(get: { model.alertMessage != nil }, set: { if !$0 { model.dismissAlert() } })) {
+            if model.alertOffersAccessibilitySettings {
+                Button(model.t("openAccessibilitySettings")) {
+                    model.openAccessibilitySettings()
+                    model.dismissAlert()
+                }
+            }
+            Button("OK", role: .cancel) { model.dismissAlert() }
         } message: { Text(model.alertMessage ?? "") }
         .onDrop(of: [.fileURL], isTargeted: $isDropTarget, perform: acceptDrop)
         .overlay {
@@ -1214,7 +1252,7 @@ struct ContentView: View {
     private func addApp(at url: URL) {
         guard url.pathExtension.lowercased() == "app",
               let bundle = Bundle(url: url), let identifier = bundle.bundleIdentifier else {
-            model.alertMessage = model.t("invalidDrop")
+            model.showAlert(model.t("invalidDrop"))
             return
         }
         let name = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
@@ -1430,6 +1468,9 @@ struct RuleEditor: View {
         }
         .padding(28).frame(width: 520, height: 625)
         .onAppear { runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }.sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") } }
+        .onChange(of: closeEnabled) { _, enabled in
+            if enabled { model.requestWindowControlAccess() }
+        }
     }
 
     private var appPicker: some View {
@@ -1726,6 +1767,9 @@ struct LaunchRuleEditor: View {
         .padding(28).frame(width: 560, height: 500)
         .onAppear(perform: refreshRunningApps)
         .onChange(of: delaySeconds) { _, value in delaySeconds = min(max(value, 0), 86_400) }
+        .onChange(of: visibilityMode) { _, mode in
+            if mode.requiresAccessibility { model.requestWindowControlAccess() }
+        }
     }
 
     private var appPicker: some View {

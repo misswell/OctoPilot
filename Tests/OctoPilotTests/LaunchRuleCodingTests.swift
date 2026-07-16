@@ -3,6 +3,12 @@ import Testing
 @testable import OctoPilot
 
 struct LaunchRuleCodingTests {
+    @Test func onlyCloseWindowsModeRequiresAccessibility() {
+        #expect(!LaunchVisibilityMode.foreground.requiresAccessibility)
+        #expect(!LaunchVisibilityMode.hidden.requiresAccessibility)
+        #expect(LaunchVisibilityMode.closeWindows.requiresAccessibility)
+    }
+
     @Test func migratesLegacyForegroundMode() throws {
         let rule = try decodeLegacy(activateOnLaunch: true)
         #expect(rule.visibilityMode == .foreground)
