@@ -92,7 +92,7 @@ enum LaunchVisibilityMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-struct AccessibilityResetCommand {
+struct AccessibilityResetCommand: Sendable {
     let bundleIdentifier: String
 
     var executableURL: URL { URL(fileURLWithPath: "/usr/bin/tccutil") }
@@ -107,6 +107,11 @@ struct AccessibilityResetCommand {
         process.waitUntilExit()
         return process.terminationStatus
     }
+}
+
+enum AccessibilityResetExecution: Sendable {
+    case success(Int32)
+    case failure(String)
 }
 
 struct AccessibilityRecoveryRequest {
@@ -265,6 +270,7 @@ enum AppText {
         "accessibilityRequired": "“关闭窗口”需要辅助功能权限。如果升级后已勾选但仍无效，可一键重置权限并退出 OctoPilot；重新打开后再允许权限。当前应用：%@",
         "openAccessibilitySettings": "打开辅助功能设置",
         "resetAccessibility": "重置权限并退出",
+        "resettingAccessibility": "正在重置…",
         "accessibilityRecoveryHint": "系统仍未确认当前版本的权限。如果列表中已开启但这里仍显示，请直接重置旧授权记录。",
         "accessibilityResetFailed": "无法重置辅助功能权限：%@",
         "accessibilityResetStatus": "tccutil 退出状态：%d",
@@ -335,6 +341,7 @@ enum AppText {
             "accessibilityRequired": "Closing windows requires Accessibility access. If it remains unavailable after an update, reset the permission and quit OctoPilot in one step, then reopen it and grant access. Current app: %@",
             "openAccessibilitySettings": "Open Accessibility Settings",
             "resetAccessibility": "Reset Permission and Quit",
+            "resettingAccessibility": "Resetting…",
             "accessibilityRecoveryHint": "macOS still does not trust this version. If it is already enabled in the list, reset the stale permission record here.",
             "accessibilityResetFailed": "Couldn’t reset Accessibility access: %@",
             "accessibilityResetStatus": "tccutil exited with status %d",
@@ -418,6 +425,7 @@ final class OctoPilotModel: ObservableObject {
     @Published var alertMessage: String?
     @Published private(set) var alertOffersAccessibilitySettings = false
     @Published private(set) var alertOffersAccessibilityReset = false
+    @Published private(set) var isResettingAccessibility = false
     @Published private(set) var launchesAtLogin = false
     @Published var language: AppLanguage = .system { didSet { saveIfReady() } }
     private var launchTasks: [UUID: Task<Void, Never>] = [:]
@@ -480,23 +488,45 @@ final class OctoPilotModel: ObservableObject {
     }
 
     @discardableResult
-    func resetAccessibilityAndQuit(presentFailureAlert: Bool = true) -> String? {
+    func resetAccessibility(presentFailureAlert: Bool = true) async -> String? {
+        guard !isResettingAccessibility else { return t("resettingAccessibility") }
+        isResettingAccessibility = true
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.misswell.octopilot"
-        do {
-            let status = try AccessibilityResetCommand(bundleIdentifier: bundleIdentifier).run()
+        let command = AccessibilityResetCommand(bundleIdentifier: bundleIdentifier)
+        let execution = await Task.detached(priority: .userInitiated) {
+            do {
+                return AccessibilityResetExecution.success(try command.run())
+            } catch {
+                return AccessibilityResetExecution.failure(error.localizedDescription)
+            }
+        }.value
+
+        switch execution {
+        case .success(let status):
             guard status == 0 else {
                 let message = t("accessibilityResetFailed", t("accessibilityResetStatus", status))
+                isResettingAccessibility = false
                 if presentFailureAlert { showAlert(message) }
                 return message
             }
             AccessibilityRecoveryRequest.schedule()
-            NSApp.terminate(nil)
             return nil
-        } catch {
-            let message = t("accessibilityResetFailed", error.localizedDescription)
+        case .failure(let description):
+            let message = t("accessibilityResetFailed", description)
+            isResettingAccessibility = false
             if presentFailureAlert { showAlert(message) }
             return message
         }
+    }
+
+    func terminateAfterSheetsClose() {
+        guard NSApp.windows.allSatisfy({ $0.attachedSheet == nil }) else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.terminateAfterSheetsClose()
+            }
+            return
+        }
+        NSApp.terminate(nil)
     }
 
     private func requestAccessibilityAfterResetIfNeeded() {
@@ -1252,9 +1282,14 @@ struct ContentView: View {
         .sheet(item: $editingLaunchRule) { rule in LaunchRuleEditor(rule: rule).environmentObject(model) }
         .alert("OctoPilot", isPresented: Binding(get: { model.alertMessage != nil }, set: { if !$0 { model.dismissAlert() } })) {
             if model.alertOffersAccessibilityReset {
-                Button(model.t("resetAccessibility"), role: .destructive) {
-                    model.resetAccessibilityAndQuit()
+                Button(model.isResettingAccessibility ? model.t("resettingAccessibility") : model.t("resetAccessibility"), role: .destructive) {
+                    Task {
+                        if await model.resetAccessibility() == nil {
+                            model.terminateAfterSheetsClose()
+                        }
+                    }
                 }
+                .disabled(model.isResettingAccessibility)
             }
             if model.alertOffersAccessibilitySettings {
                 Button(model.t("openAccessibilitySettings")) {
@@ -1498,6 +1533,7 @@ struct AppIcon: View {
 
 struct AccessibilityRecoveryView: View {
     @EnvironmentObject private var model: OctoPilotModel
+    @Environment(\.dismiss) private var dismiss
     @State private var resetFailureMessage: String?
 
     var body: some View {
@@ -1509,9 +1545,15 @@ struct AccessibilityRecoveryView: View {
                 Button(model.t("openAccessibilitySettings")) {
                     model.openAccessibilitySettings()
                 }
-                Button(model.t("resetAccessibility"), role: .destructive) {
-                    resetFailureMessage = model.resetAccessibilityAndQuit(presentFailureAlert: false)
+                Button(model.isResettingAccessibility ? model.t("resettingAccessibility") : model.t("resetAccessibility"), role: .destructive) {
+                    Task {
+                        resetFailureMessage = await model.resetAccessibility(presentFailureAlert: false)
+                        guard resetFailureMessage == nil else { return }
+                        dismiss()
+                        model.terminateAfterSheetsClose()
+                    }
                 }
+                .disabled(model.isResettingAccessibility)
             }
             if let resetFailureMessage {
                 Text(resetFailureMessage).font(.caption).foregroundStyle(.red)
