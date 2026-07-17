@@ -24,5 +24,9 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>OctoPilot needs permission to manage inactive apps.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>OctoPilot uses Bluetooth to detect nearby BLE devices (such as your iPhone or Apple Watch) for proximity-based screen lock and unlock.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>OctoPilot uses Bluetooth to detect nearby BLE devices for proximity-based screen lock and unlock.</string>
 </dict>
 </plist>

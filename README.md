@@ -15,6 +15,21 @@ Rules, launch plans, and preferences persist in `~/Library/Application Support/O
 
 You can pick a running app or browse for an `.app` bundle, reorder rules, pause enforcement globally, and choose Start at Login from the menu-bar menu.
 
+## BLE Unlock
+
+OctoPilot can also lock and unlock your Mac by proximity of a Bluetooth Low Energy device — an iPhone, Apple Watch, or any BLE device that periodically advertises from a **static MAC address**. It replicates the behavior of [ts1/BLEUnlock](https://github.com/ts1/BLEUnlock).
+
+Open **BLE Unlock** from the sidebar (or the menu-bar menu) and:
+
+- Scan for nearby devices and pick yours. Devices are shown with name, resolved MAC address, and live RSSI.
+- Set **Unlock RSSI** (unlock when the device is close) and **Lock RSSI** (lock when it moves away). Either can be disabled independently.
+- Set a **Delay to Lock** (grace period before locking when the device leaves) and a **No-Signal Timeout** (lock when signal is lost).
+- Optionally: wake the display on proximity, wake without unlocking, pause "Now Playing" while locked, use the screen saver to lock, turn off the screen on lock, or switch to **Passive Mode** to avoid interfering with other Bluetooth devices.
+- Use **Lock Screen Now** to lock immediately; it unlocks once the device leaves and returns.
+- Your login password is stored securely in **Keychain** and is only used to type it on the lock screen. Set or update it with **Set Password…**.
+
+Bluetooth and Accessibility access are required. Devices whose BLE MAC address rotates (most non-Apple devices) cannot be tracked reliably.
+
 ## Build the app
 
 ```sh
@@ -27,6 +42,39 @@ The built app is `OctoPilot.app` in the project root. The Close Windows action r
 Local and GitHub Release builds currently use ad-hoc signing, so each update can have a new code identity and macOS may require Accessibility access to be granted again. Preserving that grant reliably across upgrades requires distributing every version with the same Developer ID signing identity.
 
 If OctoPilot remains untrusted after an update even though it is enabled in the Accessibility list, toggling the switch may leave the old signing record in place. The permission alert offers **Reset Permission and Quit**, which runs `tccutil reset Accessibility com.misswell.octopilot` for you and exits OctoPilot. Reopen the app and grant access again. Runtime rules check access silently and do not repeatedly request it in the background.
+
+## Distribution
+
+Local builds are signed ad-hoc. To produce a distributable, notarized build you need an Apple Developer account.
+
+### Prerequisites
+
+1. A **Developer ID Application** certificate (create it in the Apple Developer portal, then import its `.p12` into your keychain).
+2. An **app-specific password** for notarization (appleid.apple.com → Sign-In and Security → App-Specific Passwords).
+3. Your **Team ID** (10 characters, from the Developer portal).
+
+### Local distribution
+
+```sh
+export OCTOPILOT_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)"
+export OCTOPILOT_APPLE_ID="you@example.com"
+export OCTOPILOT_APPLE_PASSWORD="app-specific-password"
+export OCTOPILOT_TEAM_ID="TEAMID"
+./Scripts/distribute-app.sh
+```
+
+This builds, signs with Developer ID + Hardened Runtime, submits to Apple for notarization, staples the ticket, and produces `OctoPilot.app` + `OctoPilot-<version>-macos.zip` that open without Gatekeeper warnings.
+
+### GitHub Releases
+
+Pushing a tag like `v1.1.0` runs the `dist` job, which signs and notarizes automatically. Configure these repository secrets:
+
+- `APPLE_CERTIFICATE_P12` — base64-encoded `.p12` of your Developer ID Application certificate
+- `APPLE_CERTIFICATE_PASSWORD` — password for that `.p12`
+- `APPLE_DEVELOPER_ID` — `Developer ID Application: Your Name (TEAMID)`
+- `APPLE_ID` — your Apple ID
+- `APPLE_APP_SPECIFIC_PASSWORD` — app-specific password
+- `APPLE_TEAM_ID` — your Team ID
 
 ## GitHub Actions
 

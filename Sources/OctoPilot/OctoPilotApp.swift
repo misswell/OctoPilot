@@ -324,7 +324,33 @@ enum AppText {
         "noLaunchAppsDetail": "添加应用并设置登录后的启动延迟。", "addFirstLaunchApp": "添加第一个启动应用",
         "loginRequired": "启用“登录时启动”后，启动规则会在每次开机登录时自动执行。", "seconds": "秒",
         "launchDuplicate": "已存在 \"%@\" 的启动规则。", "launchPlanRunning": "%d 个任务正在等待启动",
-        "launchPlanIdle": "没有待启动任务", "launchPlanDone": "本次启动计划已完成"
+        "launchPlanIdle": "没有待启动任务", "launchPlanDone": "本次启动计划已完成",
+        "bleUnlock": "BLE 解锁", "ble": "BLE", "bleUnlockSubtitle": "根据 BLE 设备（iPhone、Apple Watch 等）的接近程度自动锁定和解锁 Mac。",
+        "bleNotConfigured": "尚未选择设备", "bleDeviceNotDetected": "未检测到设备", "bleNoDevice": "尚未选择设备",
+        "bleLockNow": "立即锁定屏幕", "bleDevice": "设备", "bleScanning": "正在扫描…", "bleSelectDevice": "选择设备",
+        "bleDeviceHint": "打开设备菜单开始扫描附近的 BLE 设备，选择你的 iPhone、Apple Watch 或其他 BLE 设备。需要使用固定 MAC 地址的设备。",
+        "bleUnlockRSSI": "解锁 RSSI", "bleLockRSSI": "锁定 RSSI", "bleLockDelay": "锁定延迟", "bleNoSignalTimeout": "无信号超时",
+        "bleCloser": "更近", "bleFarther": "更远", "bleDisabled": "禁用",
+        "bleUnlockRSSIInfo": "蓝牙信号强度阈值，达到此值时解锁。数值越大，设备需要越靠近才能解锁。选择“禁用”可关闭自动解锁。",
+        "bleLockRSSIInfo": "蓝牙信号强度阈值，低于此值时锁定。数值越小，设备需要越远离才会锁定。选择“禁用”可关闭自动锁定。",
+        "bleLockDelayInfo": "检测到设备远离后，等待多久再锁定。若在此时间内设备重新靠近，则不会锁定。",
+        "bleTimeoutInfo": "距离最后一次收到信号到判定“信号丢失”并锁定的时间。若频繁出现“信号丢失”锁定，请增大此值。",
+        "bleWakeOnProximity": "接近时唤醒", "bleWakeWithoutUnlocking": "唤醒但不解锁", "blePauseNowPlaying": "锁定时暂停播放",
+        "bleUseScreensaver": "用屏幕保护程序锁定", "bleTurnOffScreen": "锁定时关闭屏幕", "blePassiveMode": "被动模式",
+        "blePassiveModeInfo": "默认主动连接设备读取 RSSI，更稳定。若与其他蓝牙设备相互干扰，可开启被动模式仅靠扫描。",
+        "bleSetPassword": "设置密码…", "bleEnable": "启用 BLE 解锁", "bleEnabledStatus": "BLE 解锁：已启用", "bleDisabledStatus": "BLE 解锁：已停用",
+        "bleBluetoothOff": "蓝牙未打开", "bleEnterPassword": "请输入登录密码", "blePasswordInfo": "密码将安全保存在钥匙串中，仅在屏幕锁定时用于解锁。",
+        "blePasswordStored": "密码已保存到钥匙串。", "blePasswordFailed": "无法保存密码：%@", "blePasswordNotSet": "尚未设置登录密码。请使用“设置密码…”。",
+        "bleMinRSSI": "设置最小 RSSI…", "bleManage": "管理 BLE 解锁", "bleManageDevices": "在主窗口管理设备…",
+        "bleNear": "接近", "bleAway": "离开", "bleLost": "信号丢失", "bleActive": "活动", "bleCurrentDevice": "当前设备", "bleChangeDevice": "更换设备",
+        "bleRSSIDBm": "%ddBm", "bleRSSIActive": "%ddBm（活动）", "bleSeconds": "秒",
+        "bleSignalStrength": "信号强度", "bleProximityStatus": "接近状态", "bleMonitoring": "正在监控", "bleIdle": "空闲",
+        "bleThresholds": "触发阈值", "bleTiming": "时间参数", "bleBehavior": "行为选项", "bleSecurity": "密码与锁定",
+        "bleRangeNear": "近", "bleRangeMid": "中", "bleRangeFar": "远", "bleRangeFarFar": "很远",
+        "bleUnlockZone": "解锁区", "bleLockZone": "锁定区", "bleCurrent": "当前",
+        "bleNoPassword": "未设置密码", "blePasswordSet": "密码已保存",
+        "bleAccessRequired": "BLE 解锁需要辅助功能权限来模拟键盘解锁并锁定屏幕。当前应用：%@", "bleBluetoothRequired": "需要蓝牙权限才能扫描 BLE 设备。",
+        "bleNoDevicesFound": "未发现附近 BLE 设备。"
     ]
 
     static func value(_ key: String, language: AppLanguage, _ arguments: CVarArg...) -> String {
@@ -395,7 +421,33 @@ enum AppText {
             "noLaunchAppsDetail": "Add an app and set its delay after login.", "addFirstLaunchApp": "Add your first launch app",
             "loginRequired": "Enable Start at Login to run launch rules automatically after each boot login.", "seconds": "seconds",
             "launchDuplicate": "A launch rule for \"%@\" already exists.", "launchPlanRunning": "%d launches are waiting",
-            "launchPlanIdle": "No scheduled launches", "launchPlanDone": "This launch plan is complete"
+            "launchPlanIdle": "No scheduled launches", "launchPlanDone": "This launch plan is complete",
+            "bleUnlock": "BLE Unlock", "ble": "BLE", "bleUnlockSubtitle": "Automatically lock and unlock your Mac by proximity of a BLE device (iPhone, Apple Watch, etc.).",
+            "bleNotConfigured": "No device set", "bleDeviceNotDetected": "Not detected", "bleNoDevice": "No device selected",
+            "bleLockNow": "Lock Screen Now", "bleDevice": "Device", "bleScanning": "Scanning…", "bleSelectDevice": "Select Device",
+            "bleDeviceHint": "Open the device menu to scan for nearby BLE devices and pick your iPhone, Apple Watch, or other BLE device. The device must use a static MAC address.",
+            "bleUnlockRSSI": "Unlock RSSI", "bleLockRSSI": "Lock RSSI", "bleLockDelay": "Delay to Lock", "bleNoSignalTimeout": "No-Signal Timeout",
+            "bleCloser": "Closer", "bleFarther": "Farther", "bleDisabled": "Disable",
+            "bleUnlockRSSIInfo": "Bluetooth signal strength to unlock. A larger value means the device must be closer to unlock. Choose Disable to turn off auto-unlock.",
+            "bleLockRSSIInfo": "Bluetooth signal strength to lock. A smaller value means the device must be farther away to lock. Choose Disable to turn off auto-lock.",
+            "bleLockDelayInfo": "How long to wait before locking after the device moves away. If it comes closer within this time, no lock occurs.",
+            "bleTimeoutInfo": "Time between last signal reception and locking as “signal lost”. Increase this if you see frequent “signal lost” locking.",
+            "bleWakeOnProximity": "Wake on Proximity", "bleWakeWithoutUnlocking": "Wake without Unlocking", "blePauseNowPlaying": "Pause “Now Playing” while Locked",
+            "bleUseScreensaver": "Use Screensaver to Lock", "bleTurnOffScreen": "Turn Off Screen on Lock", "blePassiveMode": "Passive Mode",
+            "blePassiveModeInfo": "By default it actively connects to the device and reads RSSI, which is more stable. If it interferes with other Bluetooth devices, enable Passive Mode to scan only.",
+            "bleSetPassword": "Set Password…", "bleEnable": "Enable BLE Unlock", "bleEnabledStatus": "BLE Unlock: Enabled", "bleDisabledStatus": "BLE Unlock: Disabled",
+            "bleBluetoothOff": "Bluetooth is off", "bleEnterPassword": "Enter your login password", "blePasswordInfo": "It will be securely stored in Keychain and used only to unlock the locked screen.",
+            "blePasswordStored": "Password saved to Keychain.", "blePasswordFailed": "Couldn’t save password: %@", "blePasswordNotSet": "Login password is not set. Use Set Password….",
+            "bleMinRSSI": "Set Minimum RSSI…", "bleManage": "Manage BLE Unlock", "bleManageDevices": "Manage devices in main window…",
+            "bleNear": "Near", "bleAway": "Away", "bleLost": "Signal lost", "bleActive": "Active", "bleCurrentDevice": "Current device", "bleChangeDevice": "Change device",
+            "bleRSSIDBm": "%ddBm", "bleRSSIActive": "%ddBm (Active)", "bleSeconds": "seconds",
+            "bleSignalStrength": "Signal Strength", "bleProximityStatus": "Proximity", "bleMonitoring": "Monitoring", "bleIdle": "Idle",
+            "bleThresholds": "Trigger Thresholds", "bleTiming": "Timing", "bleBehavior": "Behavior", "bleSecurity": "Password & Lock",
+            "bleRangeNear": "Near", "bleRangeMid": "Mid", "bleRangeFar": "Far", "bleRangeFarFar": "Very far",
+            "bleUnlockZone": "Unlock zone", "bleLockZone": "Lock zone", "bleCurrent": "Current",
+            "bleNoPassword": "No password set", "blePasswordSet": "Password saved",
+            "bleAccessRequired": "BLE Unlock needs Accessibility access to simulate keystrokes for unlocking and to lock the screen. Current app: %@", "bleBluetoothRequired": "Bluetooth permission is required to scan for BLE devices.",
+            "bleNoDevicesFound": "No nearby BLE devices found."
         ]
 }
 
@@ -412,15 +464,17 @@ final class OctoPilotModel: ObservableObject {
         var launchRules: [LaunchRule]
         var isLaunchSchedulingEnabled: Bool
         var lastScheduledBootSession: String?
+        var bleUnlock: BLEUnlockSettings
 
-        init(rules: [QuitRule], isEnforcing: Bool, language: AppLanguage, launchRules: [LaunchRule], isLaunchSchedulingEnabled: Bool, lastScheduledBootSession: String?) {
-            version = 4
+        init(rules: [QuitRule], isEnforcing: Bool, language: AppLanguage, launchRules: [LaunchRule], isLaunchSchedulingEnabled: Bool, lastScheduledBootSession: String?, bleUnlock: BLEUnlockSettings) {
+            version = 5
             self.rules = rules
             self.isEnforcing = isEnforcing
             self.language = language
             self.launchRules = launchRules
             self.isLaunchSchedulingEnabled = isLaunchSchedulingEnabled
             self.lastScheduledBootSession = lastScheduledBootSession
+            self.bleUnlock = bleUnlock
         }
 
         init(from decoder: Decoder) throws {
@@ -432,6 +486,7 @@ final class OctoPilotModel: ObservableObject {
             launchRules = try container.decodeIfPresent([LaunchRule].self, forKey: .launchRules) ?? []
             isLaunchSchedulingEnabled = try container.decodeIfPresent(Bool.self, forKey: .isLaunchSchedulingEnabled) ?? true
             lastScheduledBootSession = try container.decodeIfPresent(String.self, forKey: .lastScheduledBootSession)
+            bleUnlock = try container.decodeIfPresent(BLEUnlockSettings.self, forKey: .bleUnlock) ?? BLEUnlockSettings()
         }
     }
 
@@ -446,6 +501,8 @@ final class OctoPilotModel: ObservableObject {
     @Published private(set) var isResettingAccessibility = false
     @Published private(set) var launchesAtLogin = false
     @Published var language: AppLanguage = .system { didSet { saveIfReady() } }
+    let ble = BLEUnlockModel()
+    @Published var requestedSection: MainSection?
     private var launchTasks: [UUID: Task<Void, Never>] = [:]
     private let launchGate = LaunchGate(minimumStartInterval: 3)
     @Published private(set) var launchStates: [UUID: LaunchRuntimeState] = [:]
@@ -476,6 +533,9 @@ final class OctoPilotModel: ObservableObject {
         evaluateRules()
         scheduleLaunchPlanForCurrentBootIfNeeded()
         requestAccessibilityAfterResetIfNeeded()
+        ble.persist = { [weak self] in self?.saveIfReady() }
+        ble.startObservingSystemState()
+        ble.activateFromConfiguration()
     }
 
     var enabledCount: Int { rules.filter(\.isEnabled).count }
@@ -1042,6 +1102,7 @@ final class OctoPilotModel: ObservableObject {
         launchRules = configuration.launchRules
         isLaunchSchedulingEnabled = configuration.isLaunchSchedulingEnabled
         lastScheduledBootSession = configuration.lastScheduledBootSession
+        ble.applyLoadedSettings(configuration.bleUnlock)
     }
 
     private func save() {
@@ -1051,7 +1112,8 @@ final class OctoPilotModel: ObservableObject {
             language: language,
             launchRules: launchRules,
             isLaunchSchedulingEnabled: isLaunchSchedulingEnabled,
-            lastScheduledBootSession: lastScheduledBootSession
+            lastScheduledBootSession: lastScheduledBootSession,
+            bleUnlock: ble.settings
         )
         do {
             let directory = configurationURL.deletingLastPathComponent()
@@ -1265,7 +1327,7 @@ final class OctoPilotModel: ObservableObject {
     var timeString: String { lastChecked.formatted(.dateTime.hour().minute().locale(language.locale)) }
 }
 
-enum MainSection { case exit, launch, settings }
+enum MainSection { case exit, launch, ble, settings }
 
 struct ContentView: View {
     @EnvironmentObject private var model: OctoPilotModel
@@ -1287,6 +1349,8 @@ struct ContentView: View {
                     else { rulesList }
                 } else if section == .launch {
                     LaunchRulesView(showingAdd: $showingLaunchAdd, editingRule: $editingLaunchRule)
+                } else if section == .ble {
+                    BLEUnlockView(ble: model.ble)
                 } else {
                     SettingsView()
                 }
@@ -1318,6 +1382,10 @@ struct ContentView: View {
             Button("OK", role: .cancel) { model.dismissAlert() }
         } message: { Text(model.alertMessage ?? "") }
         .onDrop(of: [.fileURL], isTargeted: $isDropTarget, perform: acceptDrop)
+        .onChange(of: model.requestedSection) { _, newValue in
+            if let s = newValue { section = s; model.requestedSection = nil }
+        }
+        .onAppear { if let s = model.requestedSection { section = s } }
         .overlay {
             if isDropTarget {
                 RoundedRectangle(cornerRadius: 14)
@@ -1418,6 +1486,15 @@ struct Sidebar: View {
             }
             .buttonStyle(.plain)
             .background(section == .launch ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 12)
+            Button { section = .ble } label: {
+                Label(model.t("bleUnlock"), systemImage: "antenna.radiowaves.left.and.right")
+                    .padding(.vertical, 9).padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(section == .ble ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 12)
             Button { section = .settings } label: {
                 Label(model.t("settings"), systemImage: "gearshape")
@@ -2069,6 +2146,348 @@ struct ActionSetting: View {
     }
 }
 
+struct BLEUnlockView: View {
+    @EnvironmentObject private var model: OctoPilotModel
+    @ObservedObject var ble: BLEUnlockModel
+    @State private var showPicker = false
+    @State private var showingPassword = false
+    @State private var passwordEntry = ""
+    @State private var showingMinRSSI = false
+    @State private var minRSSIEntry = ""
+    @State private var passwordMessage: String?
+    @State private var resetFailureMessage: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                header
+                enableSection
+                if ble.settings.isEnabled {
+                    deviceSection
+                    thresholdSection
+                    optionsSection
+                    actionsSection
+                }
+            }
+            .padding(.horizontal, 36).padding(.top, 34).padding(.bottom, 30)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showingPassword) { passwordSheet }
+        .sheet(isPresented: $showingMinRSSI) { minRSSISheet }
+        .alert("OctoPilot", isPresented: Binding(get: { passwordMessage != nil }, set: { if !$0 { passwordMessage = nil } })) {
+            Button("OK", role: .cancel) { passwordMessage = nil }
+        } message: { Text(passwordMessage ?? "") }
+        .onDisappear { if showPicker { showPicker = false; ble.stopScanning() } }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(model.t("bleUnlock")).font(.system(size: 30, weight: .bold))
+                Text(model.t("bleUnlockSubtitle")).foregroundStyle(.secondary)
+            }
+            Spacer()
+            signalGauge
+        }
+    }
+
+    private var signalGauge: some View {
+        let rssi = ble.lastRSSI ?? -100
+        let progress = max(0, min(1, Double(rssi + 100) / 70))
+        let color: Color = rssi >= -60 ? .green : (rssi >= -80 ? .yellow : .red)
+        return ZStack {
+            Circle().stroke(Color.secondary.opacity(0.15), lineWidth: 10)
+            Circle().trim(from: 0, to: progress)
+                .stroke(color, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text(ble.lastRSSI.map { model.t("bleRSSIDBm", $0) } ?? "—").font(.system(.title3, design: .rounded).bold())
+                Text(proximityLabel).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 88, height: 88)
+    }
+
+    private var proximityLabel: String {
+        if !ble.bluetoothPoweredOn { return model.t("bleBluetoothOff") }
+        if ble.lastRSSI == nil { return model.t("bleLost") }
+        return ble.presence ? model.t("bleNear") : model.t("bleAway")
+    }
+
+    private var enableSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.t("bleEnable")).font(.headline)
+                    statusLine
+                }
+                Spacer()
+                Toggle("", isOn: Binding(get: { ble.settings.isEnabled }, set: { enabled in
+                    if enabled { model.requestWindowControlAccess(presentRecoveryGuidance: false) }
+                    ble.setEnabled(enabled)
+                })).labelsHidden().toggleStyle(.switch).controlSize(.large)
+            }
+            if ble.settings.isEnabled, !model.hasWindowControlAccess() {
+                accessibilityHint
+            }
+        }
+        .padding(16).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    @ViewBuilder private var accessibilityHint: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(model.t("bleAccessRequired", Bundle.main.bundleURL.path), systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline).foregroundStyle(.orange)
+            HStack {
+                Button(model.t("openAccessibilitySettings")) { model.openAccessibilitySettings() }
+                Button(model.isResettingAccessibility ? model.t("resettingAccessibility") : model.t("resetAccessibility"), role: .destructive) {
+                    Task {
+                        resetFailureMessage = await model.resetAccessibility(presentFailureAlert: false)
+                        guard resetFailureMessage == nil else { return }
+                        model.terminateAfterSheetsClose()
+                    }
+                }
+                .disabled(model.isResettingAccessibility)
+            }
+            if let resetFailureMessage {
+                Text(resetFailureMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.orange.opacity(0.35)))
+    }
+
+    @ViewBuilder private var statusLine: some View {
+        HStack(spacing: 6) {
+            Circle().fill(statusColor).frame(width: 8, height: 8)
+            Text(statusText).font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+
+    private var statusColor: Color {
+        if !ble.bluetoothPoweredOn { return .orange }
+        if ble.lastRSSI == nil { return .secondary }
+        return ble.presence ? .green : .red
+    }
+
+    private var statusText: String {
+        if !ble.bluetoothPoweredOn { return model.t("bleBluetoothOff") }
+        if ble.lastRSSI == nil { return ble.settings.monitoredDeviceUUID == nil ? model.t("bleNoDevice") : model.t("bleDeviceNotDetected") }
+        return ble.presence ? model.t("bleNear") : model.t("bleAway")
+    }
+
+    private var deviceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle(model.t("bleDevice"))
+            Text(model.t("bleDeviceHint")).font(.subheadline).foregroundStyle(.secondary)
+            if let name = ble.settings.monitoredDeviceName, !name.isEmpty {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(Color.blue.opacity(0.12)).frame(width: 42, height: 42)
+                        Image(systemName: "antenna.radiowaves.left.and.right").foregroundStyle(.blue).font(.title3)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name).font(.body.weight(.medium))
+                        if let uuid = ble.settings.monitoredDeviceUUID { Text(uuid).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                    Button(model.t("bleChangeDevice")) { showPicker = true; ble.startScanning() }
+                }
+                .padding(14).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+            }
+            if showPicker { deviceScanList }
+            else if ble.settings.monitoredDeviceUUID == nil {
+                Button { showPicker = true; ble.startScanning() } label: {
+                    Label(model.t("bleSelectDevice"), systemImage: "viewfinder").frame(maxWidth: .infinity)
+                }.buttonStyle(.bordered).controlSize(.large)
+            }
+        }
+    }
+
+    private var deviceScanList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(model.t("bleScanning")).foregroundStyle(.secondary).font(.subheadline)
+                Spacer()
+                Button(model.t("cancel")) { showPicker = false; ble.stopScanning() }
+            }
+            if ble.devices.isEmpty {
+                Text(model.t("bleNoDevicesFound")).foregroundStyle(.secondary).font(.subheadline)
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+            } else {
+                LazyVStack(spacing: 6) {
+                    ForEach(ble.devices) { device in deviceRow(device) }
+                }
+            }
+        }
+        .padding(14).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder private func deviceRow(_ device: BLEUnlockDevice) -> some View {
+        HStack(spacing: 12) {
+            signalBars(device.rssi)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(device.displayName).font(.body).lineLimit(1)
+                if let mac = device.prettifiedMAC { Text(mac).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer()
+            Text("\(device.rssi)dBm").font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+            Button(model.t("bleSelectDevice")) { showPicker = false; ble.selectDevice(device.uuid) }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+        }
+        .padding(10).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder private func signalBars(_ rssi: Int) -> some View {
+        let level = rssi >= -55 ? 4 : (rssi >= -65 ? 3 : (rssi >= -75 ? 2 : 1))
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(1...4, id: \.self) { index in
+                Capsule().fill(index <= level ? Color.accentColor : Color.secondary.opacity(0.25))
+                    .frame(width: 4, height: CGFloat(5 + index * 4))
+            }
+        }.frame(width: 24, height: 22)
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).font(.title3.bold()).padding(.top, 6)
+    }
+
+    private var thresholdSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle(model.t("bleThresholds"))
+            rssiRangeBar
+            rssiPickerRow(model.t("bleUnlockRSSI"), selection: Binding(get: { ble.settings.unlockRSSI }, set: { ble.setUnlockRSSI($0) }), options: [BLEUnlockModel.unlockDisabled] + BLEUnlockModel.rssiOptions, info: model.t("bleUnlockRSSIInfo"))
+            rssiPickerRow(model.t("bleLockRSSI"), selection: Binding(get: { ble.settings.lockRSSI }, set: { ble.setLockRSSI($0) }), options: BLEUnlockModel.rssiOptions + [BLEUnlockModel.lockDisabled], info: model.t("bleLockRSSIInfo"))
+        }
+    }
+
+    private var rssiRangeBar: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let position: (Int) -> CGFloat = { rssi in width * max(0, min(1, CGFloat(rssi + 100) / 70)) }
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.secondary.opacity(0.15)).frame(height: 12)
+                if ble.settings.unlockRSSI != BLEUnlockModel.unlockDisabled {
+                    Rectangle().fill(Color.green.opacity(0.5))
+                        .frame(width: max(0, width - position(ble.settings.unlockRSSI)), height: 12)
+                        .offset(x: position(ble.settings.unlockRSSI)).clipShape(Capsule())
+                }
+                if ble.settings.lockRSSI != BLEUnlockModel.lockDisabled {
+                    Rectangle().fill(Color.red.opacity(0.5))
+                        .frame(width: position(ble.settings.lockRSSI), height: 12).clipShape(Capsule())
+                }
+                if let rssi = ble.lastRSSI {
+                    Rectangle().fill(Color.primary).frame(width: 2).offset(x: position(rssi) - 1)
+                }
+            }
+        }.frame(height: 12)
+    }
+
+    private func rssiPickerRow(_ title: String, selection: Binding<Int>, options: [Int], info: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).font(.subheadline.weight(.medium))
+                Spacer()
+                Picker(title, selection: selection) {
+                    ForEach(options, id: \.self) { value in
+                        Text(value == BLEUnlockModel.unlockDisabled || value == BLEUnlockModel.lockDisabled ? model.t("bleDisabled") : "\(value)dBm").tag(value)
+                    }
+                }.labelsHidden().pickerStyle(.menu).frame(width: 140).controlSize(.small)
+            }
+            Text(info).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var optionsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle(model.t("bleTiming"))
+            timingRow(model.t("bleLockDelay"), selection: Binding(get: { ble.settings.proximityTimeout }, set: { ble.setProximityTimeout($0) }), options: BLEUnlockModel.lockDelayOptions, info: model.t("bleLockDelayInfo"))
+            timingRow(model.t("bleNoSignalTimeout"), selection: Binding(get: { ble.settings.signalTimeout }, set: { ble.setSignalTimeout($0) }), options: BLEUnlockModel.timeoutOptions, info: model.t("bleTimeoutInfo"))
+        }
+    }
+
+    private func timingRow(_ title: String, selection: Binding<Int>, options: [Int], info: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).font(.subheadline.weight(.medium))
+                Spacer()
+                Picker(title, selection: selection) {
+                    ForEach(options, id: \.self) { value in Text(durationLabel(value)).tag(value) }
+                }.labelsHidden().pickerStyle(.menu).frame(width: 140).controlSize(.small)
+            }
+            Text(info).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var actionsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionTitle(model.t("bleBehavior"))
+            VStack(alignment: .leading, spacing: 12) {
+                toggleRow(model.t("bleWakeOnProximity"), isOn: Binding(get: { ble.settings.wakeOnProximity }, set: { ble.setWakeOnProximity($0) }))
+                toggleRow(model.t("bleWakeWithoutUnlocking"), isOn: Binding(get: { ble.settings.wakeWithoutUnlocking }, set: { ble.setWakeWithoutUnlocking($0) }))
+                toggleRow(model.t("blePauseNowPlaying"), isOn: Binding(get: { ble.settings.pauseNowPlaying }, set: { ble.setPauseNowPlaying($0) }))
+                toggleRow(model.t("bleUseScreensaver"), isOn: Binding(get: { ble.settings.useScreensaver }, set: { ble.setUseScreensaver($0) }))
+                toggleRow(model.t("bleTurnOffScreen"), isOn: Binding(get: { ble.settings.turnOffScreen }, set: { ble.setTurnOffScreen($0) }))
+                toggleRow(model.t("blePassiveMode"), isOn: Binding(get: { ble.settings.passiveMode }, set: { ble.setPassiveMode($0) }))
+                Text(model.t("blePassiveModeInfo")).font(.caption).foregroundStyle(.secondary)
+            }
+            Divider()
+            sectionTitle(model.t("bleSecurity"))
+            HStack(spacing: 12) {
+                Label(ble.hasPassword ? model.t("blePasswordSet") : model.t("bleNoPassword"), systemImage: ble.hasPassword ? "checkmark.seal.fill" : "key.fill")
+                    .font(.subheadline).foregroundStyle(ble.hasPassword ? .green : .secondary)
+                Button(model.t("bleSetPassword")) { showingPassword = true; passwordEntry = "" }
+                Button(model.t("bleMinRSSI")) { showingMinRSSI = true; minRSSIEntry = String(ble.settings.thresholdRSSI) }
+                Spacer()
+                Button(model.t("bleLockNow")) { ble.lockNow() }.buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    private func toggleRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn).toggleStyle(.switch).controlSize(.small)
+    }
+
+    private func durationLabel(_ seconds: Int) -> String {
+        seconds < 60 ? "\(seconds) \(model.t("bleSeconds"))" : "\(seconds / 60) \(model.t(seconds / 60 == 1 ? "minute" : "minutes"))"
+    }
+
+    private var passwordSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(model.t("bleEnterPassword")).font(.headline)
+            Text(model.t("blePasswordInfo")).font(.subheadline).foregroundStyle(.secondary)
+            SecureField(model.t("bleEnterPassword"), text: $passwordEntry)
+            HStack {
+                Spacer()
+                Button(model.t("cancel")) { showingPassword = false }.keyboardShortcut(.cancelAction)
+                Button(model.t("save")) {
+                    if ble.storePassword(passwordEntry) { passwordMessage = model.t("blePasswordStored") }
+                    else { passwordMessage = model.t("blePasswordFailed", "Keychain") }
+                    showingPassword = false
+                }.keyboardShortcut(.defaultAction).disabled(passwordEntry.isEmpty)
+            }
+        }.padding(20).frame(width: 360)
+    }
+
+    private var minRSSISheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(model.t("bleMinRSSI")).font(.headline)
+            TextField(model.t("bleMinRSSI"), text: $minRSSIEntry)
+            HStack {
+                Spacer()
+                Button(model.t("cancel")) { showingMinRSSI = false }.keyboardShortcut(.cancelAction)
+                Button(model.t("save")) {
+                    if let value = Int(minRSSIEntry) { ble.setThresholdRSSI(value) }
+                    showingMinRSSI = false
+                }.keyboardShortcut(.defaultAction)
+            }
+        }.padding(20).frame(width: 360)
+    }
+}
+
 struct MenuBarView: View {
     @EnvironmentObject private var model: OctoPilotModel
     @Environment(\.openWindow) private var openWindow
@@ -2086,6 +2505,19 @@ struct MenuBarView: View {
         Divider()
         Toggle(model.t("startAtLogin"), isOn: Binding(get: { model.launchesAtLogin }, set: { model.setLaunchAtLogin($0) }))
         Button(model.t("showApp"), action: showMainWindow)
+        Divider()
+        Toggle(model.ble.settings.isEnabled ? model.t("bleEnabledStatus") : model.t("bleDisabledStatus"),
+               isOn: Binding(get: { model.ble.settings.isEnabled }, set: { enabled in
+                   if enabled { model.requestWindowControlAccess(presentRecoveryGuidance: false) }
+                   model.ble.setEnabled(enabled)
+               }))
+        Button(model.t("bleLockNow")) { model.ble.lockNow() }
+            .disabled(!model.ble.settings.isEnabled)
+        if let name = model.ble.settings.monitoredDeviceName, !name.isEmpty {
+            Button(name) { model.requestedSection = .ble; showMainWindow() }
+        } else {
+            Button(model.t("bleSelectDevice")) { model.requestedSection = .ble; showMainWindow() }
+        }
         Divider()
         Button(model.t("quitApp")) { NSApp.terminate(nil) }
     }

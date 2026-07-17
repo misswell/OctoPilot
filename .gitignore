@@ -2,3 +2,5 @@
 .build/
 OctoQuit.app/
 OctoPilot.app/
+cert/
+OctoPilot-*.zip

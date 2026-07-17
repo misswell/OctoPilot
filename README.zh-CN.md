@@ -20,6 +20,21 @@ OctoPilot 是一款原生 macOS 菜单栏应用。它会按照你为每个应用
 - 支持跟随系统、English、简体中文三种界面语言。
 - 规则与偏好会保存到本机，更新或替换 App 后不会丢失。
 
+## BLE 解锁
+
+OctoPilot 还可以根据蓝牙低功耗（BLE）设备的接近程度自动锁定和解锁 Mac——支持 iPhone、Apple Watch，或任何使用**固定 MAC 地址**周期性广播信号的 BLE 设备。功能复刻自 [ts1/BLEUnlock](https://github.com/ts1/BLEUnlock)。
+
+在侧边栏或菜单栏中打开 **BLE 解锁**，然后：
+
+- 扫描附近设备并选择你的设备。设备会显示名称、解析出的 MAC 地址和实时 RSSI。
+- 设置 **解锁 RSSI**（设备靠近时解锁）和 **锁定 RSSI**（设备远离时锁定），两者可分别禁用。
+- 设置 **锁定延迟**（设备离开后的宽限期）和 **无信号超时**（信号丢失后锁定）。
+- 可选：接近时唤醒、唤醒但不解锁、锁定时暂停播放、用屏幕保护程序锁定、锁定时关闭屏幕，或开启**被动模式**以避免与其他蓝牙设备相互干扰。
+- 使用 **立即锁定屏幕** 可立即锁定；待设备离开后重新靠近即会解锁。
+- 登录密码会安全保存在**钥匙串**中，仅在锁屏时用于模拟键盘输入解锁。可用“设置密码…”设置或更新。
+
+需要蓝牙与辅助功能权限。BLE MAC 地址会周期性轮换的设备（多数非苹果设备）无法被可靠跟踪。
+
 ## 配置文件
 
 退出规则、启动规则与偏好配置保存在：
@@ -42,6 +57,39 @@ open OctoPilot.app
 当前本地与 GitHub Release 构建使用 ad-hoc 签名，因此每次更新都可能产生新的代码身份，macOS 可能要求重新授予辅助功能权限。要让授权在版本升级后稳定继承，需要使用同一 Developer ID 证书签名后再分发。
 
 如果升级后辅助功能列表中已经勾选 OctoPilot，但“关闭窗口”仍提示无权限，仅关闭再打开开关可能不会更新旧签名记录。权限提示中可直接点击**重置权限并退出**，OctoPilot 会自动执行 `tccutil reset Accessibility com.misswell.octopilot` 并退出；重新打开应用后再次允许权限即可。运行规则只会静默检查权限，不会在后台反复重新请求。
+
+## 分发
+
+本地构建使用 ad-hoc 签名。要生成可分发、已公证的构建，需要 Apple 开发者账号。
+
+### 前置条件
+
+1. **Developer ID Application** 证书（在 Apple Developer 后台创建，把 `.p12` 导入钥匙串）。
+2. 用于公证的**App 专用密码**（appleid.apple.com -> 登录和安全 -> App 专用密码）。
+3. **Team ID**（10 位，在开发者后台查看）。
+
+### 本地分发
+
+```sh
+export OCTOPILOT_DEVELOPER_ID="Developer ID Application: 你的名字 (TEAMID)"
+export OCTOPILOT_APPLE_ID="you@example.com"
+export OCTOPILOT_APPLE_PASSWORD="app-specific-password"
+export OCTOPILOT_TEAM_ID="TEAMID"
+./Scripts/distribute-app.sh
+```
+
+脚本会构建、用 Developer ID + Hardened Runtime 签名、提交 Apple 公证、装订票据，产出 `OctoPilot.app` 与 `OctoPilot-<版本>-macos.zip`，双击即可打开，无 Gatekeeper 拦截。
+
+### GitHub Release
+
+推送形如 `v1.1.0` 的 tag 会触发 `dist` 任务，自动签名并公证。请在仓库配置以下 secrets：
+
+- `APPLE_CERTIFICATE_P12` - Developer ID Application 证书 `.p12` 的 base64
+- `APPLE_CERTIFICATE_PASSWORD` - 该 `.p12` 的密码
+- `APPLE_DEVELOPER_ID` - `Developer ID Application: 你的名字 (TEAMID)`
+- `APPLE_ID` - 你的 Apple ID
+- `APPLE_APP_SPECIFIC_PASSWORD` - App 专用密码
+- `APPLE_TEAM_ID` - 你的 Team ID
 
 ## GitHub Actions
 
