@@ -180,6 +180,7 @@ final class BLEUnlockDevice: Identifiable, Hashable {
     var macAddress: String?
     var bluetoothName: String?
     var lastSeenAt = Date()
+    var firstSeenAt = Date()
     private var didResolveIdentity = false
 
     init(uuid: UUID) { self.uuid = uuid; self.id = uuid }
@@ -536,10 +537,7 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
 
     private func publishDeviceListIfNeeded() {
         guard deviceRefreshBatcher.takePendingRefresh() else { return }
-        devices = deviceMap.values.sorted {
-            if $0.rssi != $1.rssi { return $0.rssi > $1.rssi }
-            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-        }
+        devices = deviceMap.values.sorted { $0.firstSeenAt < $1.firstSeenAt }
     }
 
     private func connectMonitoredPeripheral() {
