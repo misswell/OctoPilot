@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 @main
 struct OctoPilotApp: App {
     @StateObject private var model = OctoPilotModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         Window("OctoPilot", id: "main") {
@@ -22,6 +23,37 @@ struct OctoPilotApp: App {
             Image(systemName: model.isEnforcing ? "timer" : "pause.circle")
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // 登录启动时（父进程为 loginwindow）不弹出主窗口，仅保留菜单栏图标。
+        // 手动双击启动时父进程不是 loginwindow，主窗口正常显示。
+        guard Self.wasLaunchedAtLogin() else { return }
+        for window in NSApp.windows where !window.isKind(of: NSPanel.self) {
+            window.orderOut(nil)
+        }
+    }
+
+    /// 判断本次启动是否由登录项触发：登录启动时父进程是 loginwindow。
+    private static func wasLaunchedAtLogin() -> Bool {
+        parentProcessName() == "loginwindow"
+    }
+
+    private static func parentProcessName() -> String? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getppid()]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        let count = UInt32(mib.count)
+        let result = mib.withUnsafeMutableBufferPointer { pointer -> Int32 in
+            sysctl(pointer.baseAddress, count, &info, &size, nil, 0)
+        }
+        guard result == 0 else { return nil }
+        return withUnsafePointer(to: &info.kp_proc.p_comm) { pointer in
+            pointer.withMemoryRebound(to: CChar.self, capacity: Int(MAXCOMLEN)) { String(cString: $0) }
+        }
     }
 }
 
@@ -283,7 +315,7 @@ enum AppText {
         "hideAfter": "闲置 %d 分钟后隐藏", "closeAfter": "闲置 %d 分钟后关闭窗口", "quitAfter": "闲置 %d 分钟后退出", "quitHidden": "隐藏 %d 分钟后退出",
         "addRule": "添加应用规则", "editAppRule": "编辑应用规则", "ruleDetail": "选择一个应用，然后设置一个或多个自动操作。",
         "hideInactive": "闲置后隐藏", "closeInactive": "闲置后关闭窗口", "quitInactive": "闲置后退出", "quitAfterHidden": "隐藏后退出",
-        "closeWindowHint": "关闭应用的可关闭窗口，但保留后台进程。Dock 图标是否消失由该应用决定。",
+        "closeWindowHint": "关闭应用的可关闭窗口，但保留后台进程。OctoPilot 会模拟在前台点击关闭按钮，能否移除 Dock 图标取决于该应用是否据此转入菜单栏后台。",
         "accessibilityRequired": "“关闭窗口”需要辅助功能权限。如果升级后已勾选但仍无效，可一键重置权限并退出 OctoPilot；重新打开后再允许权限。当前应用：%@",
         "openAccessibilitySettings": "打开辅助功能设置",
         "resetAccessibility": "重置权限并退出",
@@ -316,7 +348,7 @@ enum AppText {
         "launchModeForeground": "显示到前台", "launchModeHidden": "隐藏应用", "launchModeCloseWindows": "关闭窗口，保留后台",
         "launchForegroundHint": "应用启动后显示到前台。",
         "launchHiddenHint": "应用启动后自动隐藏，并恢复之前的前台应用。",
-        "launchCloseWindowsHint": "应用启动 10 秒后关闭可关闭窗口，但保留后台或菜单栏进程。Dock 图标是否消失由该应用决定。",
+        "launchCloseWindowsHint": "应用启动 10 秒后切到前台并模拟点击关闭按钮，保留后台或菜单栏进程。能否移除 Dock 图标取决于该应用。",
         "launchCloseFailed": "应用已启动，但无法关闭其窗口",
         "runNow": "立即执行", "cancelLaunches": "取消待启动任务", "launchEnabled": "启动计划已启用", "launchPaused": "启动计划已暂停",
         "launchIn": "%d 秒后启动", "launching": "正在启动", "launched": "已启动", "alreadyRunning": "已跳过：应用已在运行",
@@ -350,7 +382,8 @@ enum AppText {
         "bleUnlockZone": "解锁区", "bleLockZone": "锁定区", "bleCurrent": "当前",
         "bleNoPassword": "未设置密码", "blePasswordSet": "密码已保存",
         "bleAccessRequired": "BLE 解锁需要辅助功能权限来模拟键盘解锁并锁定屏幕。当前应用：%@", "bleBluetoothRequired": "需要蓝牙权限才能扫描 BLE 设备。",
-        "bleNoDevicesFound": "未发现附近 BLE 设备。"
+        "bleNoDevicesFound": "未发现附近 BLE 设备。",
+        "bleSortBy": "排序", "bleSortAdded": "加载顺序", "bleSortName": "名称", "bleSortSignal": "信号"
     ]
 
     static func value(_ key: String, language: AppLanguage, _ arguments: CVarArg...) -> String {
@@ -381,7 +414,7 @@ enum AppText {
             "hideAfter": "Hide after %d min inactive", "closeAfter": "Close windows after %d min inactive", "quitAfter": "Quit after %d min inactive", "quitHidden": "Quit %d min after hiding",
             "addRule": "Add app rule", "editAppRule": "Edit app rule", "ruleDetail": "Choose an application, then choose one or more automatic actions.",
             "hideInactive": "Hide after inactivity", "closeInactive": "Close windows after inactivity", "quitInactive": "Quit after inactivity", "quitAfterHidden": "Quit after being hidden",
-            "closeWindowHint": "Closes the app’s closable windows while leaving its process running. Whether its Dock icon disappears is controlled by that app.",
+            "closeWindowHint": "Closes the app's closable windows while leaving its process running. OctoPilot simulates clicking the close button in the foreground; whether the Dock icon disappears depends on whether the app retreats to the menu bar.",
             "accessibilityRequired": "Closing windows requires Accessibility access. If it remains unavailable after an update, reset the permission and quit OctoPilot in one step, then reopen it and grant access. Current app: %@",
             "openAccessibilitySettings": "Open Accessibility Settings",
             "resetAccessibility": "Reset Permission and Quit",
@@ -413,7 +446,7 @@ enum AppText {
             "launchModeForeground": "Bring to front", "launchModeHidden": "Hide application", "launchModeCloseWindows": "Close windows, keep running",
             "launchForegroundHint": "Brings the application to the foreground after launch.",
             "launchHiddenHint": "Hides the application after launch and restores the previous foreground app.",
-            "launchCloseWindowsHint": "Waits 10 seconds after launch, then closes the app’s closable windows while keeping its background or menu-bar process running. Whether its Dock icon disappears is controlled by that app.",
+            "launchCloseWindowsHint": "Waits 10 seconds after launch, then brings the app to the foreground and simulates clicking its close button while keeping the background or menu-bar process running. Whether its Dock icon disappears depends on that app.",
             "launchCloseFailed": "The app launched, but its windows could not be closed",
             "runNow": "Run now", "cancelLaunches": "Cancel scheduled launches", "launchEnabled": "Launch plan enabled", "launchPaused": "Launch plan paused",
             "launchIn": "Launches in %d sec", "launching": "Launching", "launched": "Launched", "alreadyRunning": "Skipped: already running",
@@ -447,7 +480,8 @@ enum AppText {
             "bleUnlockZone": "Unlock zone", "bleLockZone": "Lock zone", "bleCurrent": "Current",
             "bleNoPassword": "No password set", "blePasswordSet": "Password saved",
             "bleAccessRequired": "BLE Unlock needs Accessibility access to simulate keystrokes for unlocking and to lock the screen. Current app: %@", "bleBluetoothRequired": "Bluetooth permission is required to scan for BLE devices.",
-            "bleNoDevicesFound": "No nearby BLE devices found."
+            "bleNoDevicesFound": "No nearby BLE devices found.",
+            "bleSortBy": "Sort", "bleSortAdded": "Added", "bleSortName": "Name", "bleSortSignal": "Signal"
         ]
 }
 
@@ -1242,6 +1276,9 @@ final class OctoPilotModel: ObservableObject {
             return false
         }
         guard !application.isTerminated else { return false }
+        // 先把目标应用切到前台再模拟点击关闭按钮，使其更接近"用户在前台手动关闭"，
+        // 从而让"关闭即缩到菜单栏、移除 Dock 图标"的应用（如 OpenVPN）更可能触发自身逻辑。
+        application.activate(options: [])
         return await retryPostLaunchAction(application, restoring: previousApplication) {
             self.closeWindows(of: application).postLaunchResult
         }
@@ -2146,6 +2183,8 @@ struct ActionSetting: View {
     }
 }
 
+private enum DeviceSortMode { case added, name, signal }
+
 struct BLEUnlockView: View {
     @EnvironmentObject private var model: OctoPilotModel
     @ObservedObject var ble: BLEUnlockModel
@@ -2156,6 +2195,7 @@ struct BLEUnlockView: View {
     @State private var minRSSIEntry = ""
     @State private var passwordMessage: String?
     @State private var resetFailureMessage: String?
+    @State private var sortMode: DeviceSortMode = .added
 
     var body: some View {
         ScrollView {
@@ -2314,16 +2354,32 @@ struct BLEUnlockView: View {
                 Spacer()
                 Button(model.t("cancel")) { showPicker = false; ble.stopScanning() }
             }
+            if !ble.devices.isEmpty {
+                Picker(model.t("bleSortBy"), selection: $sortMode) {
+                    Text(model.t("bleSortAdded")).tag(DeviceSortMode.added)
+                    Text(model.t("bleSortName")).tag(DeviceSortMode.name)
+                    Text(model.t("bleSortSignal")).tag(DeviceSortMode.signal)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+            }
             if ble.devices.isEmpty {
                 Text(model.t("bleNoDevicesFound")).foregroundStyle(.secondary).font(.subheadline)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
             } else {
                 LazyVStack(spacing: 6) {
-                    ForEach(ble.devices) { device in deviceRow(device) }
+                    ForEach(sortedDevices()) { device in deviceRow(device) }
                 }
             }
         }
         .padding(14).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func sortedDevices() -> [BLEUnlockDevice] {
+        switch sortMode {
+        case .added: return ble.devices
+        case .name: return ble.devices.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        case .signal: return ble.devices.sorted { $0.rssi > $1.rssi }
+        }
     }
 
     @ViewBuilder private func deviceRow(_ device: BLEUnlockDevice) -> some View {
