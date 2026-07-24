@@ -452,13 +452,15 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
     private func resetSignalTimer() {
         signalTimer?.invalidate()
         signalTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(settings.signalTimeout), repeats: false) { [weak self] _ in
-            guard let self else { return }
-            self.lastRSSI = nil
-            self.connected = false
-            self.activeMode = false
-            if self.presence {
-                self.presence = false
-                self.updatePresence(presence: false, reason: "lost")
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.lastRSSI = nil
+                self.connected = false
+                self.activeMode = false
+                if self.presence {
+                    self.presence = false
+                    self.updatePresence(presence: false, reason: "lost")
+                }
             }
         }
         RunLoop.main.add(signalTimer!, forMode: .common)
@@ -489,10 +491,12 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
             proximityTimer = nil
         } else if presence && proximityTimer == nil {
             proximityTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(settings.proximityTimeout), repeats: false) { [weak self] _ in
-                guard let self else { return }
-                self.presence = false
-                self.updatePresence(presence: false, reason: "away")
-                self.proximityTimer = nil
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.presence = false
+                    self.updatePresence(presence: false, reason: "away")
+                    self.proximityTimer = nil
+                }
             }
             RunLoop.main.add(proximityTimer!, forMode: .common)
         }
@@ -546,9 +550,11 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
         guard p.state == .disconnected else { return }
         centralMgr?.connect(p, options: nil)
         connectionTimer?.invalidate()
-        connectionTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self, weak p] _ in
-            guard let self, let p, p.state == .connecting else { return }
-            self.centralMgr?.cancelPeripheralConnection(p)
+        connectionTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let p = self.monitoredPeripheral, p.state == .connecting else { return }
+                self.centralMgr?.cancelPeripheralConnection(p)
+            }
         }
         if let timer = connectionTimer { RunLoop.main.add(timer, forMode: .common) }
     }
@@ -632,10 +638,12 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
 
         if activeModeTimer == nil && !settings.passiveMode {
             if !isScanning { centralMgr?.stopScan() }
-            activeModeTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self, weak peripheral] _ in
-                guard let self else { return }
-                if let p = peripheral {
-                    if p.state == .connected { p.readRSSI() } else { self.connectMonitoredPeripheral() }
+            activeModeTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if let p = self.monitoredPeripheral {
+                        if p.state == .connected { p.readRSSI() } else { self.connectMonitoredPeripheral() }
+                    }
                 }
             }
             if let timer = activeModeTimer { RunLoop.main.add(timer, forMode: .common) }
@@ -726,7 +734,7 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
                 if displaySleep && !systemSleep && settings.wakeOnProximity {
                     bleWakeDisplay()
                     wakeRetryTask?.cancel()
-                    wakeRetryTask = Task { [weak self] in
+                    wakeRetryTask = Task {
                         while !Task.isCancelled {
                             try? await Task.sleep(for: .seconds(1))
                             await MainActor.run { bleWakeDisplay() }
@@ -859,16 +867,20 @@ final class BLEUnlockModel: NSObject, ObservableObject, @preconcurrency CBCentra
     func startObservingSystemState() {
         guard observers.isEmpty else { return }
         let nc = NSWorkspace.shared.notificationCenter
-        observers.append(nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.displaySleep = true })
+        observers.append(nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.displaySleep = true } })
         observers.append(nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.displaySleep = false
-            self?.wakeRetryTask?.cancel()
-            self?.tryUnlockScreen()
+            MainActor.assumeIsolated {
+                self?.displaySleep = false
+                self?.wakeRetryTask?.cancel()
+                self?.tryUnlockScreen()
+            }
         })
-        observers.append(nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.systemSleep = true })
+        observers.append(nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.systemSleep = true } })
         observers.append(nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.systemSleep = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self?.tryUnlockScreen() }
+            MainActor.assumeIsolated {
+                self?.systemSleep = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self?.tryUnlockScreen() }
+            }
         })
 
         let dnc = DistributedNotificationCenter.default
